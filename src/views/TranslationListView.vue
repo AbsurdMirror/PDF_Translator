@@ -32,7 +32,7 @@
         <el-table-column type="selection" width="55" />
         <el-table-column prop="filename" label="文件名" min-width="200">
           <template #default="{ row }">
-            <div class="filename-cell">
+            <div class="filename-cell" @click="showResultDetail(row)" style="cursor: pointer;">
               <el-icon class="file-icon"><Document /></el-icon>
               <span class="filename-text">{{ row.filename }}</span>
             </div>
@@ -134,13 +134,13 @@
                         <el-icon><Download /></el-icon>
                         下载
                       </el-dropdown-item>
-                      <el-dropdown-item @click="row.status === 'completed' ? showResultDetail(row) : refreshTaskRow(row)">
-                        <el-icon>
-                          <template v-if="row.status === 'completed'"><Document /></template>
-                          <template v-else><Refresh /></template>
-                        </el-icon>
-                        <span v-if="row.status === 'completed'">详情</span>
-                        <span v-else>刷新</span>
+                      <el-dropdown-item @click="showResultDetail(row)">
+                        <el-icon><Document /></el-icon>
+                        详情
+                      </el-dropdown-item>
+                      <el-dropdown-item v-if="row.status !== 'completed'" @click="refreshTaskRow(row)">
+                        <el-icon><Refresh /></el-icon>
+                        刷新
                       </el-dropdown-item>
                       <el-dropdown-item @click="deleteTask(row)">
                         <el-icon><Delete /></el-icon>
@@ -257,7 +257,8 @@ const refreshList = () => {
 
 const refreshTaskRow = async (task: TranslationTask) => {
   try {
-    const { progress, status, message } = await mockGetProgress(task.taskId)
+    const result: any = await getTranslationProgress(task.taskId)
+    const { progress, status, message } = result
     translationStore.updateTask(task.taskId, { progress, status, message })
   } catch (error) {
     ElMessage.error('刷新失败')
