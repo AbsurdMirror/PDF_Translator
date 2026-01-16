@@ -10,6 +10,10 @@ from alibabacloud_docmind_api20220711 import models as docmind_api20220711_model
 from alibabacloud_tea_util import models as util_models
 from alibabacloud_credentials.client import Client as CredClient
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 class PDFParser:
     def __init__(self, 
                  task_id: str,
@@ -82,7 +86,7 @@ class PDFParser:
             # 直接执行主逻辑，不创建新线程
             self._run_task_sync(interval, stop_event)
         except KeyboardInterrupt:
-            print(f"任务 {self.task_id} 收到键盘中断，正在停止...")
+            logger.info(f"任务 {self.task_id} 收到键盘中断，正在停止...")
             self.stop()
             # 再次抛出异常，以便上层也能捕获（如果是主线程直接运行）
             raise
@@ -90,7 +94,7 @@ class PDFParser:
     def stop(self):
         """发送停止信号"""
         self._stop_event.set()
-        print("任务已收到停止信号")
+        logger.info("任务已收到停止信号")
 
     def _init_client(self):
         """初始化API客户端"""
@@ -125,7 +129,7 @@ class PDFParser:
         while not self._stop_event.is_set():
             # 检查外部停止信号
             if external_stop_event and external_stop_event.is_set():
-                print(f"任务 {task_id} 检测到外部停止信号，正在停止...")
+                logger.info(f"任务 {task_id} 检测到外部停止信号，正在停止...")
                 self.stop()
                 break
 
@@ -134,7 +138,7 @@ class PDFParser:
                 if finished:
                     break
             except Exception as e:
-                print(f"轮询过程出错: {e}")
+                logger.error(f"轮询过程出错: {e}")
                 
             # 使用 wait 代替 sleep，支持响应 stop()
             self._stop_event.wait(interval)
@@ -158,11 +162,11 @@ class PDFParser:
             self._log_http_debug("submit_doc_parser_job_advance", request, response)
             
             task_id = response.body.data.id
-            print(f"任务已提交: {file_name}, ID: {task_id}")
+            logger.info(f"任务已提交: {file_name}, ID: {task_id}")
             return task_id
             
         except Exception as error:
-            print(f"提交任务失败 {self.file_path}: {error}")
+            logger.error(f"提交任务失败 {self.file_path}: {error}")
             self._log_http_debug("submit_doc_parser_job_advance", request if 'request' in locals() else None, error=error)
             return None
 
@@ -192,8 +196,7 @@ class PDFParser:
             step = self.layout_step_size
         
             layouts = self._get_result(task_id, start_num, step)
-            print(f"processed_layout_num: {self.processed_layout_num}, total_layout_num: {self.total_layout_num}")
-            print(f"start_num: {start_num}, step: {step}, layouts: {layouts}")
+            logger.debug(f"processed_layout_num: {self.processed_layout_num}, total_layout_num: {self.total_layout_num}")
 
             if not layouts: break
             
@@ -210,7 +213,7 @@ class PDFParser:
         is_fail = (self.task_status == 'fail')
         
         if is_success:
-            print(f"任务 {task_id} 完成，共获取 {self.processed_layout_num} 个布局")
+            logger.info(f"任务 {task_id} 完成，共获取 {self.processed_layout_num} 个布局")
             if self._on_finish_callback:
                 self._on_finish_callback(task_id, "success", {
                     "status": "success",
@@ -219,7 +222,7 @@ class PDFParser:
                 })
             return True
         elif is_fail:
-            print(f"任务 {task_id} 失败")
+            logger.error(f"任务 {task_id} 失败")
             if self._on_finish_callback:
                 self._on_finish_callback(task_id, "fail", {"error": "Task failed"})
             return True
@@ -271,4 +274,4 @@ class PDFParser:
             with open(self.debug_output_path, 'a', encoding='utf-8') as f:
                 f.write(content + "\n")
         except Exception as e: 
-            print(f"Error logging debug: {e}")
+            logger.error(f"Error logging debug: {e}")

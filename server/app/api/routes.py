@@ -63,7 +63,7 @@ async def upload_file(
         
         return {"taskId": task_id, "status": "pending"}
     except Exception as e:
-        print(f"Upload error: {e}")
+        logger.error(f"Upload error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/progress/{task_id}")
