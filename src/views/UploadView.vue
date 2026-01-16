@@ -40,24 +40,6 @@
         </div>
       </div>
 
-      <!-- 翻译进度 -->
-      <div v-if="uploadingTask" class="progress-section">
-        <div class="progress-header">
-          <span>翻译进度</span>
-          <el-tag :type="getStatusType(uploadingTask.status)">
-            {{ getStatusLabel(uploadingTask.status) }}
-          </el-tag>
-        </div>
-        <el-progress
-          :percentage="uploadingTask.progress"
-          :status="uploadingTask.status === 'completed' ? 'success' : undefined"
-          :stroke-width="8"
-        />
-        <p v-if="uploadingTask.message" class="progress-message">
-          {{ uploadingTask.message }}
-        </p>
-      </div>
-
       <!-- 操作按钮 -->
       <div class="action-buttons">
         <el-button
@@ -68,14 +50,6 @@
           @click="startTranslation"
         >
           {{ isUploading ? '翻译中...' : '开始翻译' }}
-        </el-button>
-        <el-button
-          v-if="uploadingTask?.status === 'completed'"
-          type="success"
-          size="large"
-          @click="downloadResult"
-        >
-          下载翻译结果
         </el-button>
       </div>
     </el-card>
@@ -92,12 +66,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadFilled, Document, Delete } from '@element-plus/icons-vue'
 import { useTranslationStore } from '@/stores/translation'
-import { uploadFile, downloadTranslation } from '@/services/api'
-import { formatFileSize, getStatusLabel, getStatusType, downloadFile } from '@/utils'
+import { uploadFile } from '@/services/api'
+import { formatFileSize } from '@/utils'
 import { useRouter } from 'vue-router'
 
 const translationStore = useTranslationStore()
@@ -109,10 +83,6 @@ const currentFile = ref<File | null>(null)
 const isDragOver = ref(false)
 const isUploading = ref(false)
 
-// 当前上传的任务
-const uploadingTask = computed(() => {
-  return translationStore.tasks.find((task) => task.filename === currentFile.value?.name)
-})
 
 // 选择文件
 const selectFile = () => {
@@ -198,20 +168,6 @@ const startTranslation = async () => {
     console.error('上传错误:', error)
   } finally {
     isUploading.value = false
-  }
-}
-
-// 下载翻译结果
-const downloadResult = async () => {
-  if (!uploadingTask.value) return
-
-  try {
-    const blob: any = await downloadTranslation(uploadingTask.value.taskId)
-    const filename = uploadingTask.value.filename.replace('.pdf', '_translated.pdf')
-    downloadFile(blob, filename)
-  } catch (error) {
-    ElMessage.error('下载失败')
-    console.error('下载错误:', error)
   }
 }
 </script>
@@ -308,27 +264,6 @@ const downloadResult = async () => {
   margin: 0;
 }
 
-.progress-section {
-  margin-top: 24px;
-  padding: 20px;
-  background-color: #f5f7fa;
-  border-radius: 8px;
-}
-
-.progress-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  font-size: 16px;
-  font-weight: 500;
-}
-
-.progress-message {
-  margin: 12px 0 0 0;
-  font-size: 14px;
-  color: #606266;
-}
 
 .action-buttons {
   margin-top: 24px;
