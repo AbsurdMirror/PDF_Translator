@@ -4,6 +4,10 @@ import os
 import json
 import logging
 import yaml
+import requests
+import re
+import time
+import random
 from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy.orm import Session
 from ..core.database import SessionLocal
@@ -70,6 +74,12 @@ class TaskManager:
             # 注意：这里我们通过闭包在回调中使用 db 和 task
             # 因为是同步执行，不会有并发修改同一个 session 的问题
             
+            # 准备输出路径
+            output_dir = os.path.dirname(task.file_path)
+            output_filename = "parse_result.yaml"
+            output_path = os.path.join(output_dir, output_filename)
+            figures_dir = os.path.join(output_dir, "figures")
+
             def on_update(tid, old_status, new_status, processing):
                 try:
                     if new_status == 'processing':
@@ -98,6 +108,46 @@ class TaskManager:
 
             def on_data(tid, new_layouts):
                 try:
+                    # 确保图片目录存在
+                    if not os.path.exists(figures_dir):
+                        os.makedirs(figures_dir, exist_ok=True)
+
+                    # 处理新布局中的图片
+                    for layout in new_layouts:
+                        if layout.get("type") == "figure":
+                            content = layout.get("markdownContent", "")
+                            if not content: continue
+                            
+                            # 匹配 markdown 图片语法 ![alt](url)
+                            # 假设 alt 即为文件名，url 为下载链接
+                            matches = re.findall(r'!\[(.*?)\]\((.*?)\)', content)
+                            for filename, url in matches:
+                                if url.startswith("http"):
+                                    try:
+                                        # 清理文件名
+                                        safe_filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+                                        if not safe_filename:
+                                            safe_filename = f"figure_{int(time.time()*1000)}_{random.randint(0,1000)}.png"
+                                        
+                                        # 下载图片
+                                        local_path = os.path.join(figures_dir, safe_filename)
+                                        # 使用 stream=True 避免大文件内存占用，虽然图片一般不大
+                                        resp = requests.get(url, stream=True, timeout=30)
+                                        if resp.status_code == 200:
+                                            with open(local_path, "wb") as f:
+                                                for chunk in resp.iter_content(1024):
+                                                    f.write(chunk)
+                                            
+                                            # 更新 markdown 内容为相对路径
+                                            rel_path = f"/api/task/{task_id}/figures/{safe_filename}"
+                                            # 简单替换 URL
+                                            layout["markdownContent"] = layout["markdownContent"].replace(url, rel_path)
+                                            logger.info(f"Downloaded figure {safe_filename} for task {tid}")
+                                        else:
+                                            logger.warning(f"Failed to download figure {url}: status {resp.status_code}")
+                                    except Exception as e:
+                                        logger.error(f"Error downloading figure {url}: {e}")
+
                     # 阶段3：拉取并保存结果 (85% - 95%)
                     if parser.total_layout_num > 0 and task.progress >= 85:
                         ratio = parser.processed_layout_num / parser.total_layout_num
@@ -105,13 +155,18 @@ class TaskManager:
                         task.progress = min(95, percent)
                         task.message = f"正在保存结果 {parser.processed_layout_num}/{parser.total_layout_num} 页"
                         db.commit()
+                    
+                    # 实时保存 YAML (分批处理)
+                    result_data = {
+                        "task_id": task_id,
+                        "layouts": parser.all_layouts,
+                        "total": parser.total_layout_num
+                    }
+                    with open(output_path, 'w', encoding='utf-8') as f:
+                        yaml.safe_dump(result_data, f, allow_unicode=True, sort_keys=False)
+
                 except Exception as e:
                     logger.error(f"Error updating data callback: {e}")
-
-            # 准备输出路径
-            output_dir = os.path.dirname(task.file_path)
-            output_filename = os.path.splitext(os.path.basename(task.file_path))[0] + "_result.yaml"
-            output_path = os.path.join(output_dir, output_filename)
 
             # 处理 Endpoint，去除协议头
             endpoint = config.aliyun_endpoint or "docmind-api.cn-hangzhou.aliyuncs.com"

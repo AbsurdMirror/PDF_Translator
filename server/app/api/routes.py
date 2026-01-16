@@ -1,11 +1,12 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Depends
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, FileResponse
 from sqlalchemy.orm import Session
 from typing import List
 import os
 import shutil
 import time
 import random
+import yaml
 from pathlib import Path
 from datetime import datetime
 
@@ -94,6 +95,68 @@ async def get_translations(db: Session = Depends(get_db)):
         })
         
     return {"tasks": result}
+
+@router.get("/task/{task_id}/figures/{filename}")
+async def get_task_figure(task_id: str, filename: str):
+    task_dir = TASKS_DIR / task_id
+    file_path = task_dir / "figures" / filename
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="图片不存在")
+        
+    return FileResponse(file_path)
+
+@router.get("/task/{task_id}/result")
+async def get_task_result(task_id: str):
+    task_dir = TASKS_DIR / task_id
+    yaml_path = task_dir / "parse_result.yaml"
+
+    logger.info(f"Reading yaml file: {yaml_path}")
+    logger.info(f"File exists: {yaml_path.exists()}")
+
+    if not yaml_path.exists():
+        # 如果文件不存在，可能是还在处理中或者任务失败，或者只是没有yaml文件
+        # 这里返回一个空列表或者特定的错误信息
+        # 为了前端友好，这里返回空列表，但也可以根据实际情况调整
+        logger.warning(f"Result file not found: {yaml_path}")
+        return []
+
+    try:
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+            
+        layouts = data.get("layouts", [])
+        result = []
+        for item in layouts:
+            result.append({
+                "type": item.get("type"),
+                "subType": item.get("subType"),
+                "markdownContent": item.get("markdownContent"),
+                "pageNum": item.get("pageNum")
+            })
+            
+        return result
+    except Exception as e:
+        logger.error(f"Error reading yaml: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="解析结果读取失败")
+
+@router.get("/task/{task_id}/source")
+async def download_source_file(task_id: str, db: Session = Depends(get_db)):
+    task = db.query(Task).filter(Task.task_id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+        
+    file_path = Path(task.file_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="文件不存在")
+        
+    return Response(
+        content=file_path.read_bytes(),
+        media_type="application/pdf",
+        headers={
+            'Content-Disposition': f'attachment; filename="{task.filename}"'
+        }
+    )
 
 @router.get("/download/{task_id}")
 async def download_translation(task_id: str, db: Session = Depends(get_db)):
