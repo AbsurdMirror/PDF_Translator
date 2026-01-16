@@ -8,16 +8,12 @@
             <span class="title-text">翻译结果详情</span>
           </div>
           <div class="header-actions">
-            <el-select v-model="scheme" size="small" style="width: 220px" @change="fetchDetail">
-              <el-option label="方案A：双语对照块(pair-block)" value="pair-block" />
-              <el-option label="方案B：表格双列(table-two-col)" value="table-two-col" />
-            </el-select>
             <el-button size="small" @click="$router.back()">
               返回
             </el-button>
             <el-button type="primary" size="small" :disabled="task?.status !== 'completed'" @click="downloadTask()">
               <el-icon><Download /></el-icon>
-              下载结果
+              下载原始PDF
             </el-button>
           </div>
         </div>
@@ -32,7 +28,22 @@
           <p><strong>任务ID：</strong>{{ taskId }}</p>
           <p><strong>创建时间：</strong>{{ task?.createTime }}</p>
         </div>
-        <div class="markdown-body" v-html="renderedHtml"></div>
+        
+        <!-- 解析结果表格 -->
+        <el-table :data="parseResults" style="width: 100%" border stripe>
+          <el-table-column prop="pageNum" label="页码" width="80" align="center" />
+          <el-table-column prop="type" label="类型" width="100" align="center" />
+          <el-table-column prop="subType" label="子类型" width="120" align="center">
+             <template #default="{ row }">
+               {{ row.subType || '-' }}
+             </template>
+          </el-table-column>
+          <el-table-column prop="markdownContent" label="内容 (Markdown)">
+            <template #default="{ row }">
+              <div class="markdown-preview markdown-body" v-html="renderMarkdown(row.markdownContent)"></div>
+            </template>
+          </el-table-column>
+        </el-table>
       </div>
     </el-card>
   </div>
@@ -44,10 +55,12 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Document, Download } from '@element-plus/icons-vue'
 import { useTranslationStore } from '@/stores/translation'
-import { mockGetTaskDetail, mockDownloadTranslation } from '@/services/mockApi'
+import { getTaskDetail, downloadSourceFile } from '@/services/api'
 import { downloadFile } from '@/utils'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
 import hljs from 'highlight.js'
 import 'github-markdown-css/github-markdown.css'
 import 'highlight.js/styles/github.css'
@@ -57,8 +70,7 @@ const translationStore = useTranslationStore()
 
 const taskId = route.params.taskId as string
 const loading = ref(true)
-const scheme = ref<'pair-block' | 'table-two-col'>('pair-block')
-const markdown = ref('')
+const parseResults = ref<any[]>([])
 const task = computed(() => translationStore.tasks.find((t) => t.taskId === taskId))
 
 marked.use({
@@ -88,16 +100,17 @@ marked.use({
   }
 })
 
-const renderedHtml = computed(() => {
-  const html = marked.parse(markdown.value, { async: false }) as string
+const renderMarkdown = (content: string) => {
+  if (!content) return ''
+  const html = marked.parse(content, { async: false }) as string
   return DOMPurify.sanitize(html)
-})
+}
 
 const fetchDetail = async () => {
   loading.value = true
   try {
-    const res = await mockGetTaskDetail(taskId, scheme.value)
-    markdown.value = res.content
+    const res: any = await getTaskDetail(taskId)
+    parseResults.value = res || []
   } catch (e) {
     ElMessage.error('获取详情失败')
   } finally {
@@ -106,10 +119,11 @@ const fetchDetail = async () => {
 }
 
 const downloadTask = async () => {
-  if (!task.value || task.value.status !== 'completed') return
+  if (!task.value) return
   try {
-    const blob: any = await mockDownloadTranslation(task.value.taskId)
-    const filename = task.value.filename.replace('.pdf', '_translated.pdf')
+    const blob: any = await downloadSourceFile(task.value.taskId)
+    // 使用原始文件名
+    const filename = task.value.filename 
     downloadFile(blob, filename)
     ElMessage.success('下载成功')
   } catch (e) {
@@ -120,8 +134,6 @@ const downloadTask = async () => {
 onMounted(() => {
   fetchDetail()
 })
-
-
 </script>
 
 <style scoped>
@@ -157,16 +169,10 @@ onMounted(() => {
 .meta { margin-bottom: 16px; color: #606266; }
 .meta p { margin: 6px 0; }
 
-.markdown-body { font-size: 14px; line-height: 1.8; }
-.markdown-body h1, .markdown-body h2, .markdown-body h3 { margin: 12px 0; }
-.markdown-body pre { background:#f5f7fa; padding:12px; border-radius:6px; overflow:auto; }
-.markdown-body code { background:#f0f0f0; padding:2px 4px; border-radius:4px; }
-.markdown-body .pair { margin: 12px 0; padding: 8px 12px; border:1px solid #e5e7eb; border-radius:8px; background:#fafafa; }
-.markdown-body .pair-en { color:#111827; margin:0 0 4px; }
-.markdown-body .pair-zh { color:#374151; margin:0; }
-.markdown-body table { width:100%; border-collapse: collapse; }
-.markdown-body table tr { border-bottom: 1px dashed #e5e7eb; }
-.markdown-body table td, .markdown-body table th { padding: 10px 12px; }
-.markdown-body table td:first-child { color:#111827; font-weight:500; }
-.markdown-body table td:last-child { color:#374151; }
+.markdown-preview {
+  font-size: 14px;
+  line-height: 1.6;
+  max-height: 300px;
+  overflow-y: auto;
+}
 </style>

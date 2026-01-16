@@ -54,6 +54,18 @@ export const getTranslationList = () => {
   return api.get('/translations')
 }
 
+// 获取任务解析结果详情
+export const getTaskDetail = (taskId: string) => {
+  return api.get(`/task/${taskId}/result`)
+}
+
+// 下载原始文件
+export const downloadSourceFile = (taskId: string) => {
+  return api.get(`/task/${taskId}/source`, {
+    responseType: 'blob'
+  })
+}
+
 // 下载翻译结果
 export const downloadTranslation = (taskId: string) => {
   return api.get(`/download/${taskId}`, {
