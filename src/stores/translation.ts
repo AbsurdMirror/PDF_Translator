@@ -4,7 +4,7 @@ import { ref } from 'vue'
 export interface TranslationTask {
   taskId: string
   filename: string
-  status: 'pending' | 'translating' | 'completed' | 'failed'
+  status: 'pending' | 'processing' | 'completed' | 'failed'
   progress: number
   createTime: string
   message?: string

@@ -59,6 +59,14 @@ export const getTaskDetail = (taskId: string) => {
   return api.get(`/task/${taskId}/result`)
 }
 
+// 更新任务解析结果
+export const updateTaskResult = (taskId: string, index: number, markdownContent: string) => {
+  return api.post(`/task/${taskId}/result/update`, {
+    index,
+    markdownContent
+  })
+}
+
 // 下载原始文件
 export const downloadSourceFile = (taskId: string) => {
   return api.get(`/task/${taskId}/source`, {

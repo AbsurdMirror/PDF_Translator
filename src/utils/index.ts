@@ -10,10 +10,10 @@ export const formatFileSize = (bytes: number): string => {
 // 状态标签映射
 export const getStatusLabel = (status: string): string => {
   const statusMap: Record<string, string> = {
-    pending: '待翻译',
-    translating: '翻译中',
-    completed: '已完成',
-    failed: '翻译失败'
+    pending: '待解析',
+    processing: '解析中',
+    completed: '解析完成',
+    failed: '解析失败'
   }
   return statusMap[status] || status
 }
@@ -22,7 +22,7 @@ export const getStatusLabel = (status: string): string => {
 export const getStatusType = (status: string): string => {
   const typeMap: Record<string, string> = {
     pending: 'info',
-    translating: 'warning',
+    processing: 'warning',
     completed: 'success',
     failed: 'danger'
   }
