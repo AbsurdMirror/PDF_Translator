@@ -49,7 +49,7 @@
           :loading="isUploading"
           @click="startTranslation"
         >
-          {{ isUploading ? '翻译中...' : '开始翻译' }}
+          {{ isUploading ? '解析中...' : '上传并解析' }}
         </el-button>
       </div>
     </el-card>
@@ -153,11 +153,11 @@ const startTranslation = async () => {
         status: result.status,
         progress: 0,
         createTime: new Date().toLocaleString(),
-        message: '等待翻译'
+        message: '等待解析'
     }
     translationStore.addTask(newTask as any)
 
-    ElMessage.success('文件上传成功，开始翻译')
+    ElMessage.success('文件上传成功，开始解析')
 
     // 跳转到翻译列表页面
     setTimeout(() => {

@@ -38,118 +38,56 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="120">
+        <el-table-column label="解析阶段" width="170">
           <template #default="{ row }">
-            <el-tag
-              :type="getStatusType(row.status)"
-              :effect="row.status === 'translating' ? 'dark' : 'light'"
-            >
-              <el-icon v-if="row.status === 'translating'" class="is-loading">
-                <Loading />
-              </el-icon>
-              {{ getStatusLabel(row.status) }}
-            </el-tag>
+            <div class="stage-cell">
+              <el-tag
+                :type="getParseStatusType(row.status)"
+                :effect="row.status === 'processing' ? 'dark' : 'light'"
+              >
+                <el-icon v-if="row.status === 'processing'" class="is-loading">
+                  <Loading />
+                </el-icon>
+                {{ getParseStatusLabel(row.status) }}
+              </el-tag>
+              <div class="progress-cell">
+                <el-progress
+                  :percentage="row.progress"
+                  :status="row.status === 'completed' ? 'success' : (row.status === 'failed' ? 'exception' : undefined)"
+                  :stroke-width="6"
+                />
+                <!-- <span class="progress-text">{{ row.progress }}%</span> -->
+              </div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="progress" label="进度" width="150">
-          <template #default="{ row }">
-            <div class="progress-cell">
-              <el-progress
-                :percentage="row.progress"
-                :status="row.status === 'completed' ? 'success' : undefined"
-                :stroke-width="6"
-              />
-              <span class="progress-text">{{ row.progress }}%</span>
+        <el-table-column label="翻译阶段" width="170">
+          <template #default>
+            <div class="stage-cell">
+              <el-tag type="info" effect="light">未开始</el-tag>
+              <div class="progress-cell">
+                <el-progress :percentage="0" :stroke-width="6" />
+                <!-- <span class="progress-text">0%</span> -->
+              </div>
             </div>
           </template>
         </el-table-column>
         <el-table-column prop="createTime" label="创建时间" width="180" />
-        <el-table-column label="操作" min-width="220" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <div class="action-cell">
-              <div class="actions-full">
-                <el-button
-                  type="primary"
-                  size="small"
-                  :disabled="row.status !== 'completed'"
-                  @click="downloadTask(row)"
-                >
-                  <el-icon><Download /></el-icon>
-                  下载
-                </el-button>
-                <el-button
-                  :type="row.status === 'completed' ? 'info' : 'warning'"
-                  size="small"
-                  @click="row.status === 'completed' ? showResultDetail(row) : refreshTaskRow(row)"
-                >
-                  <el-icon>
-                    <template v-if="row.status === 'completed'"><Document /></template>
-                    <template v-else><Refresh /></template>
-                  </el-icon>
-                  <span v-if="row.status === 'completed'">详情</span>
-                  <span v-else>刷新</span>
-                </el-button>
-                <el-button type="danger" size="small" @click="deleteTask(row)">
-                  <el-icon><Delete /></el-icon>
-                  删除
-                </el-button>
-              </div>
-
-              <div class="actions-icons">
-                <el-button
-                  type="primary"
-                  size="small"
-                  circle
-                  :disabled="row.status !== 'completed'"
-                  @click="downloadTask(row)"
-                  aria-label="下载"
-                >
-                  <el-icon><Download /></el-icon>
-                </el-button>
-                <el-button
-                  :type="row.status === 'completed' ? 'info' : 'warning'"
-                  size="small"
-                  circle
-                  @click="row.status === 'completed' ? showResultDetail(row) : refreshTaskRow(row)"
-                  :aria-label="row.status === 'completed' ? '详情' : '刷新'"
-                >
-                  <el-icon>
-                    <template v-if="row.status === 'completed'"><Document /></template>
-                    <template v-else><Refresh /></template>
-                  </el-icon>
-                </el-button>
-                <el-button type="danger" size="small" circle @click="deleteTask(row)" aria-label="删除">
-                  <el-icon><Delete /></el-icon>
-                </el-button>
-              </div>
-
-              <div class="actions-dropdown">
-                <el-dropdown placement="bottom" trigger="click">
-                  <el-button type="primary" size="small" circle aria-label="更多">
-                    <el-icon><More /></el-icon>
-                  </el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item :disabled="row.status !== 'completed'" @click="downloadTask(row)">
-                        <el-icon><Download /></el-icon>
-                        下载
-                      </el-dropdown-item>
-                      <el-dropdown-item @click="showResultDetail(row)">
-                        <el-icon><Document /></el-icon>
-                        详情
-                      </el-dropdown-item>
-                      <el-dropdown-item v-if="row.status !== 'completed'" @click="refreshTaskRow(row)">
-                        <el-icon><Refresh /></el-icon>
-                        刷新
-                      </el-dropdown-item>
-                      <el-dropdown-item @click="deleteTask(row)">
-                        <el-icon><Delete /></el-icon>
-                        删除
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
-              </div>
+              <el-button type="primary" size="small" @click="refreshTaskRow(row)">
+                <el-icon><Refresh /></el-icon>
+                刷新
+              </el-button>
+              <el-button type="info" size="small" @click="showResultDetail(row)">
+                <el-icon><Document /></el-icon>
+                详情
+              </el-button>
+              <el-button type="danger" size="small" @click="deleteTask(row)">
+                <el-icon><Delete /></el-icon>
+                删除
+              </el-button>
             </div>
           </template>
         </el-table-column>
@@ -166,14 +104,14 @@
     </el-card>
 
     <!-- 进度详情对话框 -->
-    <el-dialog v-model="progressDialogVisible" title="翻译进度详情" width="400px">
+    <el-dialog v-model="progressDialogVisible" title="解析进度详情" width="400px">
       <div v-if="selectedTask" class="progress-detail">
         <div class="progress-info">
           <p><strong>文件名：</strong>{{ selectedTask.filename }}</p>
           <p>
             <strong>状态：</strong>
-            <el-tag :type="getStatusType(selectedTask.status)">
-              {{ getStatusLabel(selectedTask.status) }}
+            <el-tag :type="getParseStatusType(selectedTask.status)">
+              {{ getParseStatusLabel(selectedTask.status) }}
             </el-tag>
           </p>
           <p><strong>进度：</strong>{{ selectedTask.progress }}%</p>
@@ -188,13 +126,6 @@
   <template #footer>
     <span class="dialog-footer">
       <el-button @click="progressDialogVisible = false">关闭</el-button>
-      <el-button
-        type="primary"
-        :disabled="selectedTask?.status !== 'completed'"
-        @click="downloadSelectedTask"
-      >
-        下载结果
-      </el-button>
     </span>
   </template>
 </el-dialog>
@@ -207,10 +138,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, Loading, Refresh, Download, Delete, More } from '@element-plus/icons-vue'
+import { Document, Loading, Refresh, Delete } from '@element-plus/icons-vue'
 import { useTranslationStore } from '@/stores/translation'
-import { getTranslationList, downloadTranslation, getTranslationProgress } from '@/services/api'
-import { getStatusLabel, getStatusType, downloadFile } from '@/utils'
+import { getTranslationList, getTranslationProgress } from '@/services/api'
 import type { TranslationTask } from '@/stores/translation'
 
 const translationStore = useTranslationStore()
@@ -274,30 +204,7 @@ const handleSelectionChange = (selection: TranslationTask[]) => {
   selectedTasks.value = selection
 }
 
-// 下载任务
-const downloadTask = async (task: TranslationTask) => {
-  if (task.status !== 'completed') {
-    ElMessage.warning('翻译未完成，无法下载')
-    return
-  }
-
-  try {
-    const blob: any = await downloadTranslation(task.taskId)
-    const filename = task.filename.replace('.pdf', '_translated.pdf')
-    downloadFile(blob, filename)
-    ElMessage.success('下载成功')
-  } catch (error) {
-    ElMessage.error('下载失败')
-    console.error('下载错误:', error)
-  }
-}
-
 // 重试任务
-const retryTask = (_task: TranslationTask) => {
-  ElMessage.info('重试功能开发中...')
-  // TODO: 实现重试逻辑
-}
-
 // 删除任务
 const deleteTask = async (task: TranslationTask) => {
   try {
@@ -339,30 +246,16 @@ const batchDelete = async () => {
   }
 }
 
-// 显示进度详情
-const showProgressDetail = (task: TranslationTask) => {
-  selectedTask.value = task
-  progressDialogVisible.value = true
-}
-
-// 下载选中的任务
-const downloadSelectedTask = () => {
-  if (selectedTask.value) {
-    downloadTask(selectedTask.value)
-    progressDialogVisible.value = false
-  }
-}
-
 // 自动刷新
 let refreshInterval: number | null = null
 const startAutoRefresh = () => {
   // 每3秒刷新一次
   refreshInterval = window.setInterval(() => {
     // 仅更新正在翻译的行，避免整表刷新与全局loading
-    const translatingTasks = tasks.value.filter((task) => task.status === 'translating')
-    if (translatingTasks.length > 0) {
+    const processingTasks = tasks.value.filter((task) => task.status === 'processing')
+    if (processingTasks.length > 0) {
       Promise.all(
-        translatingTasks.map(async (task) => {
+        processingTasks.map(async (task) => {
           try {
             const response: any = await getTranslationProgress(task.taskId)
             const { progress, status, message } = response
@@ -374,6 +267,26 @@ const startAutoRefresh = () => {
       )
     }
   }, 3000)
+}
+
+const getParseStatusLabel = (status: string): string => {
+  const statusMap: Record<string, string> = {
+    pending: '待解析',
+    processing: '解析中',
+    completed: '解析完成',
+    failed: '解析失败'
+  }
+  return statusMap[status] || status
+}
+
+const getParseStatusType = (status: string): string => {
+  const typeMap: Record<string, string> = {
+    pending: 'info',
+    processing: 'warning',
+    completed: 'success',
+    failed: 'danger'
+  }
+  return typeMap[status] || 'info'
 }
 
 const stopAutoRefresh = () => {
@@ -439,15 +352,36 @@ onUnmounted(() => {
 }
 
 .progress-cell {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.progress-cell :deep(.el-progress) {
+  width: 120px;
+  flex: 0 0 120px;
 }
 
 .progress-text {
   font-size: 12px;
   color: #909399;
-  min-width: 35px;
+  min-width: 28px;
+}
+
+.stage-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.stage-cell :deep(.el-tag) {
+  padding: 0 6px;
+  height: 22px;
+  line-height: 20px;
+  font-size: 12px;
+  max-width: 100%;
+  white-space: nowrap;
 }
 
 .action-cell {
@@ -455,24 +389,6 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   white-space: nowrap;
-}
-
-.actions-full,
-.actions-icons,
-.actions-dropdown {
-  display: none;
-}
-
-@media (min-width: 1024px) {
-  .actions-full { display: flex; gap: 8px; }
-}
-
-@media (min-width: 768px) and (max-width: 1023px) {
-  .actions-icons { display: flex; gap: 8px; }
-}
-
-@media (max-width: 767px) {
-  .actions-dropdown { display: block; }
 }
 
 .empty-state {
