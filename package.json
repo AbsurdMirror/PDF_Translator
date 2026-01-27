@@ -4,8 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"vite\"",
-    "dev:client": "vite",
+    "dev": "vite",
     "server": "server\\venv\\Scripts\\python server\\run.py",
     "build": "vue-tsc && vite build",
     "preview": "vite preview",
@@ -21,6 +20,7 @@
     "element-plus": "^2.4.4",
     "github-markdown-css": "^5.8.1",
     "highlight.js": "^11.11.1",
+    "katex": "^0.16.27",
     "marked": "^17.0.1",
     "pinia": "^2.1.7",
     "vue": "^3.4.0",
