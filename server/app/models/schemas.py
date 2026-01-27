@@ -35,3 +35,7 @@ class SystemConfig(BaseModel):
     llmApiKey: str = ""
     llmModel: str = ""
     llmEndpoint: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+class TaskResultUpdate(BaseModel):
+    index: int
+    markdownContent: str

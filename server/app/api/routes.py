@@ -16,7 +16,8 @@ from ..models.schemas import (
     ProgressResponse, 
     TaskListResponse,
     TranslationTask,
-    SystemConfig
+    SystemConfig,
+    TaskResultUpdate
 )
 from ..models.sql_models import Task, Config
 from ..core.database import get_db
@@ -130,8 +131,9 @@ async def get_task_result(task_id: str):
             
         layouts = data.get("layouts", [])
         result = []
-        for item in layouts:
+        for idx, item in enumerate(layouts):
             result.append({
+                "index": idx,
                 "type": item.get("type"),
                 "subType": item.get("subType"),
                 "markdownContent": item.get("markdownContent"),
@@ -142,6 +144,32 @@ async def get_task_result(task_id: str):
     except Exception as e:
         logger.error(f"Error reading yaml: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="解析结果读取失败")
+
+@router.post("/task/{task_id}/result/update")
+async def update_task_result(task_id: str, update_data: TaskResultUpdate):
+    task_dir = TASKS_DIR / task_id
+    yaml_path = task_dir / "parse_result.yaml"
+    
+    if not yaml_path.exists():
+        raise HTTPException(status_code=404, detail="Result file not found")
+        
+    try:
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+            
+        layouts = data.get("layouts", [])
+        if update_data.index < 0 or update_data.index >= len(layouts):
+             raise HTTPException(status_code=400, detail="Invalid index")
+             
+        layouts[update_data.index]["markdownContent"] = update_data.markdownContent
+        
+        with open(yaml_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+            
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Error updating yaml: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update result")
 
 @router.get("/task/{task_id}/source")
 async def download_source_file(task_id: str, db: Session = Depends(get_db)):
