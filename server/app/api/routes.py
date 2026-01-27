@@ -23,6 +23,9 @@ from ..core.database import get_db
 from ..core.config import TASKS_DIR
 from ..core.task_manager import task_manager
 
+import logging
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 @router.post("/upload")
