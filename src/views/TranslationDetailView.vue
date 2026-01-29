@@ -50,6 +50,7 @@
             <p><strong>文件名：</strong>{{ task?.filename }}</p>
             <p><strong>任务ID：</strong>{{ taskId }}</p>
             <p><strong>创建时间：</strong>{{ task?.createTime }}</p>
+            <p><strong>状态信息：</strong>{{ task?.message || '-' }}</p>
           </div>
           <div class="progress-rings">
             <div class="ring-item">
@@ -191,13 +192,13 @@ const saving = ref(false)
 const viewMode = ref<'parse' | 'translation' | 'compare'>('parse')
 
 const parseProgress = computed(() => {
-  return Math.max(0, Math.min(100, task.value?.progress ?? 0))
+  return Math.max(0, Math.min(100, task.value?.parseProgress ?? 0))
 })
 
 const parseStatus = computed(() => {
-  if (!task.value?.status) return undefined
-  if (task.value.status === 'completed') return 'success'
-  if (task.value.status === 'failed') return 'exception'
+  if (!task.value) return undefined
+  if (parseProgress.value === 100) return 'success'
+  if (task.value.status === 'failed' && parseProgress.value < 100) return 'exception'
   return undefined
 })
 
@@ -207,8 +208,16 @@ const parseInnerMode = computed(() => {
   return 'percent'
 })
 
-const translationProgress = computed(() => 0)
-const translationStatus = computed(() => undefined)
+const translationProgress = computed(() => {
+  return Math.max(0, Math.min(100, task.value?.translateProgress ?? 0))
+})
+
+const translationStatus = computed(() => {
+  if (!task.value) return undefined
+  if (translationProgress.value === 100) return 'success'
+  if (task.value.status === 'failed' && translationProgress.value < 100 && parseProgress.value === 100) return 'exception'
+  return undefined
+})
 const translationInnerMode = computed(() => {
   if (translationStatus.value === 'success') return 'success'
   if (translationStatus.value === 'exception') return 'exception'

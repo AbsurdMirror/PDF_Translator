@@ -5,7 +5,8 @@ export interface TranslationTask {
   taskId: string
   filename: string
   status: 'pending' | 'processing' | 'completed' | 'failed'
-  progress: number
+  parseProgress: number
+  translateProgress: number
   createTime: string
   message?: string
 }

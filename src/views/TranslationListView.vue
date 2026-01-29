@@ -42,32 +42,44 @@
           <template #default="{ row }">
             <div class="stage-cell">
               <el-tag
-                :type="getParseStatusType(row.status)"
-                :effect="row.status === 'processing' ? 'dark' : 'light'"
+                :type="getParseStatusType(row)"
+                :effect="isParseProcessing(row) ? 'dark' : 'light'"
               >
-                <el-icon v-if="row.status === 'processing'" class="is-loading">
+                <el-icon v-if="isParseProcessing(row)" class="is-loading">
                   <Loading />
                 </el-icon>
-                {{ getParseStatusLabel(row.status) }}
+                {{ getParseStatusLabel(row) }}
               </el-tag>
               <div class="progress-cell">
                 <el-progress
-                  :percentage="row.progress"
-                  :status="row.status === 'completed' ? 'success' : (row.status === 'failed' ? 'exception' : undefined)"
+                  :percentage="row.parseProgress"
+                  :status="row.parseProgress === 100 ? 'success' : (row.status === 'failed' && row.parseProgress < 100 ? 'exception' : undefined)"
                   :stroke-width="6"
                 />
-                <!-- <span class="progress-text">{{ row.progress }}%</span> -->
+                <!-- <span class="progress-text">{{ row.parseProgress }}%</span> -->
               </div>
             </div>
           </template>
         </el-table-column>
         <el-table-column label="翻译阶段" width="170">
-          <template #default>
+          <template #default="{ row }">
             <div class="stage-cell">
-              <el-tag type="info" effect="light">未开始</el-tag>
+              <el-tag
+                :type="getTranslateStatusType(row)"
+                :effect="isTranslateProcessing(row) ? 'dark' : 'light'"
+              >
+                <el-icon v-if="isTranslateProcessing(row)" class="is-loading">
+                  <Loading />
+                </el-icon>
+                {{ getTranslateStatusLabel(row) }}
+              </el-tag>
               <div class="progress-cell">
-                <el-progress :percentage="0" :stroke-width="6" />
-                <!-- <span class="progress-text">0%</span> -->
+                <el-progress
+                  :percentage="row.translateProgress"
+                  :status="row.translateProgress === 100 ? 'success' : (row.status === 'failed' && row.parseProgress === 100 && row.translateProgress < 100 ? 'exception' : undefined)"
+                  :stroke-width="6"
+                />
+                <!-- <span class="progress-text">{{ row.translateProgress }}%</span> -->
               </div>
             </div>
           </template>
@@ -110,16 +122,17 @@
           <p><strong>文件名：</strong>{{ selectedTask.filename }}</p>
           <p>
             <strong>状态：</strong>
-            <el-tag :type="getParseStatusType(selectedTask.status)">
-              {{ getParseStatusLabel(selectedTask.status) }}
+            <el-tag :type="getParseStatusType(selectedTask)">
+              {{ getParseStatusLabel(selectedTask) }}
             </el-tag>
           </p>
-          <p><strong>进度：</strong>{{ selectedTask.progress }}%</p>
+          <p><strong>解析进度：</strong>{{ selectedTask.parseProgress }}%</p>
+          <p><strong>翻译进度：</strong>{{ selectedTask.translateProgress }}%</p>
           <p v-if="selectedTask.message"><strong>详细信息：</strong>{{ selectedTask.message }}</p>
         </div>
         <el-progress
-          :percentage="selectedTask.progress"
-          :status="selectedTask.status === 'completed' ? 'success' : undefined"
+          :percentage="selectedTask.parseProgress"
+          :status="selectedTask.parseProgress === 100 ? 'success' : undefined"
           :stroke-width="10"
         />
       </div>
@@ -188,8 +201,8 @@ const refreshList = () => {
 const refreshTaskRow = async (task: TranslationTask) => {
   try {
     const result: any = await getTranslationProgress(task.taskId)
-    const { progress, status, message } = result
-    translationStore.updateTask(task.taskId, { progress, status, message })
+    const { parseProgress, translateProgress, status, message } = result
+    translationStore.updateTask(task.taskId, { parseProgress, translateProgress, status, message })
   } catch (error) {
     ElMessage.error('刷新失败')
   }
@@ -258,8 +271,8 @@ const startAutoRefresh = () => {
         processingTasks.map(async (task) => {
           try {
             const response: any = await getTranslationProgress(task.taskId)
-            const { progress, status, message } = response
-            translationStore.updateTask(task.taskId, { progress, status, message })
+            const { parseProgress, translateProgress, status, message } = response
+            translationStore.updateTask(task.taskId, { parseProgress, translateProgress, status, message })
           } catch (e) {
             // 行级更新失败时忽略，避免打断其他行更新
           }
@@ -269,24 +282,43 @@ const startAutoRefresh = () => {
   }, 3000)
 }
 
-const getParseStatusLabel = (status: string): string => {
-  const statusMap: Record<string, string> = {
-    pending: '待解析',
-    processing: '解析中',
-    completed: '解析完成',
-    failed: '解析失败'
-  }
-  return statusMap[status] || status
+const isParseProcessing = (task: TranslationTask): boolean => {
+  return task.parseProgress > 0 && task.parseProgress < 100 && task.status !== 'failed'
 }
 
-const getParseStatusType = (status: string): string => {
-  const typeMap: Record<string, string> = {
-    pending: 'info',
-    processing: 'warning',
-    completed: 'success',
-    failed: 'danger'
-  }
-  return typeMap[status] || 'info'
+const getParseStatusLabel = (task: TranslationTask): string => {
+  if (task.status === 'failed' && task.parseProgress < 100) return '解析失败'
+  if (task.parseProgress === 0) return '待解析'
+  if (task.parseProgress < 100) return '解析中'
+  return '解析完成'
+}
+
+const getParseStatusType = (task: TranslationTask): string => {
+  if (task.status === 'failed' && task.parseProgress < 100) return 'danger'
+  if (task.parseProgress === 0) return 'info'
+  if (task.parseProgress < 100) return 'warning'
+  return 'success'
+}
+
+const isTranslateProcessing = (task: TranslationTask): boolean => {
+  if (task.parseProgress < 100) return false
+  return task.translateProgress > 0 && task.translateProgress < 100 && task.status !== 'failed'
+}
+
+const getTranslateStatusLabel = (task: TranslationTask): string => {
+  if (task.parseProgress < 100) return '未开始'
+  if (task.status === 'failed' && task.translateProgress < 100) return '翻译失败'
+  if (task.translateProgress === 0) return '待翻译'
+  if (task.translateProgress < 100) return '翻译中'
+  return '翻译完成'
+}
+
+const getTranslateStatusType = (task: TranslationTask): string => {
+  if (task.parseProgress < 100) return 'info'
+  if (task.status === 'failed' && task.translateProgress < 100) return 'danger'
+  if (task.translateProgress === 0) return 'info'
+  if (task.translateProgress < 100) return 'warning'
+  return 'success'
 }
 
 const stopAutoRefresh = () => {

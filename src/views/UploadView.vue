@@ -151,7 +151,8 @@ const startTranslation = async () => {
         taskId: result.taskId,
         filename: currentFile.value.name,
         status: result.status,
-        progress: 0,
+        parseProgress: 0,
+        translateProgress: 0,
         createTime: new Date().toLocaleString(),
         message: '等待解析'
     }
