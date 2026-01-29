@@ -10,7 +10,8 @@ class Task(Base):
     filename = Column(String)
     file_path = Column(String)  # 原始文件存储路径
     status = Column(String, default="pending")
-    progress = Column(Integer, default=0)
+    parse_progress = Column(Integer, default=0)
+    translate_progress = Column(Integer, default=0)
     message = Column(String, nullable=True)
     source_lang = Column(String, default="auto")
     target_lang = Column(String, default="zh-CN")

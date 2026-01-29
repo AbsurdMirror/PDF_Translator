@@ -22,7 +22,7 @@ from ..models.schemas import (
 from ..models.sql_models import Task, Config
 from ..core.database import get_db
 from ..core.config import TASKS_DIR
-from ..core.task_manager import task_manager
+from ..core.pdf_parse_manager import pdf_parse_manager
 
 import logging
 logger = logging.getLogger(__name__)
@@ -54,7 +54,8 @@ async def upload_file(
             filename=file.filename,
             file_path=str(file_path),
             status="pending",
-            progress=0,
+            parse_progress=0,
+            translate_progress=0,
             message="等待开始...",
             created_at=datetime.now()
         )
@@ -63,7 +64,7 @@ async def upload_file(
         db.refresh(new_task)
         
         # 提交任务到任务池
-        task_manager.submit_task(task_id)
+        pdf_parse_manager.submit_task(task_id)
         
         return {"taskId": task_id, "status": "pending"}
     except Exception as e:
@@ -77,7 +78,8 @@ async def get_progress(task_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="任务不存在")
     
     return {
-        "progress": task.progress,
+        "parseProgress": task.parse_progress,
+        "translateProgress": task.translate_progress,
         "status": task.status,
         "message": task.message or ""
     }
@@ -93,7 +95,8 @@ async def get_translations(db: Session = Depends(get_db)):
             "taskId": task.task_id,
             "filename": task.filename,
             "status": task.status,
-            "progress": task.progress,
+            "parseProgress": task.parse_progress,
+            "translateProgress": task.translate_progress,
             "createTime": task.created_at.strftime('%Y-%m-%d %H:%M:%S'),
             "message": task.message
         })

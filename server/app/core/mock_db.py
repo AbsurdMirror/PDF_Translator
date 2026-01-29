@@ -13,7 +13,8 @@ class MockDB:
                 taskId='task_001',
                 filename='示例文档.pdf',
                 status='completed',
-                progress=100,
+                parseProgress=100,
+                translateProgress=100,
                 createTime='2024-01-15 10:30:00',
                 message='翻译完成'
             ),
@@ -21,7 +22,8 @@ class MockDB:
                 taskId='task_002',
                 filename='技术手册.pdf',
                 status='translating',
-                progress=65,
+                parseProgress=100,
+                translateProgress=65,
                 createTime='2024-01-15 11:45:00',
                 message='正在翻译第13页，共20页'
             )
@@ -40,7 +42,8 @@ class MockDB:
             taskId=task_id,
             filename=filename,
             status='pending',
-            progress=0,
+            parseProgress=0,
+            translateProgress=0,
             createTime=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             message='等待开始...'
         )
@@ -63,15 +66,15 @@ class MockDB:
 
         task.status = 'translating'
         task.message = '开始翻译'
-        task.progress = 0
+        task.translateProgress = 0
 
-        while task.progress < 100:
+        while task.translateProgress < 100:
             await asyncio.sleep(1)  # 模拟耗时
             increment = random.randint(5, 15)
-            task.progress = min(100, task.progress + increment)
+            task.translateProgress = min(100, task.translateProgress + increment)
             
-            if task.progress < 100:
-                task.message = f'正在翻译... {task.progress}%'
+            if task.translateProgress < 100:
+                task.message = f'正在翻译... {task.translateProgress}%'
             else:
                 task.status = 'completed'
                 task.message = '翻译完成'

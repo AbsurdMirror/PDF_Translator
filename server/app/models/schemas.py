@@ -11,7 +11,8 @@ class TranslationTask(BaseModel):
     taskId: str
     filename: str
     status: str
-    progress: int
+    parseProgress: int
+    translateProgress: int
     createTime: str
     message: Optional[str] = None
 
@@ -20,7 +21,8 @@ class TaskResponse(BaseModel):
     status: str
 
 class ProgressResponse(BaseModel):
-    progress: int
+    parseProgress: int
+    translateProgress: int
     status: str
     message: str
 
