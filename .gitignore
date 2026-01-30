@@ -39,4 +39,5 @@ uploads/
 server/data/
 server/test/
 server/venv/
+server/.venv/
 __pycache__/
