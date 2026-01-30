@@ -17,12 +17,14 @@ from ..models.schemas import (
     TaskListResponse,
     TranslationTask,
     SystemConfig,
-    TaskResultUpdate
+    TaskResultUpdate,
+    TranslationSubmit
 )
 from ..models.sql_models import Task, Config
 from ..core.database import get_db
 from ..core.config import TASKS_DIR
 from ..core.pdf_parse_manager import pdf_parse_manager
+from ..core.translation_manager import translation_manager
 
 import logging
 logger = logging.getLogger(__name__)
@@ -70,6 +72,19 @@ async def upload_file(
     except Exception as e:
         logger.error(f"Upload error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/translate", response_model=TaskResponse)
+async def submit_translate_task(payload: TranslationSubmit, db: Session = Depends(get_db)):
+    task_id = payload.taskId
+    task = db.query(Task).filter(Task.task_id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    if (task.parse_progress or 0) < 100:
+        raise HTTPException(status_code=400, detail="解析未完成，无法开始翻译")
+
+    translation_manager.submit_task(task_id)
+    return {"taskId": task_id, "status": "processing"}
 
 @router.get("/progress/{task_id}")
 async def get_progress(task_id: str, db: Session = Depends(get_db)):

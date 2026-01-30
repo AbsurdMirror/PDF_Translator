@@ -22,7 +22,7 @@
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
-            <el-button type="success" size="small" @click="startTranslate">
+            <el-button type="success" size="small" @click="startTranslate" :loading="translateSubmitting" :disabled="translateSubmitting">
               翻译
             </el-button>
             <el-dropdown trigger="hover" placement="bottom-end">
@@ -164,12 +164,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Document, Download, Check, Close } from '@element-plus/icons-vue'
 import { useTranslationStore } from '@/stores/translation'
-import { getTaskDetail, downloadSourceFile, updateTaskResult } from '@/services/api'
+import { getTaskDetail, downloadSourceFile, updateTaskResult, getTranslationProgress, submitTranslationTask } from '@/services/api'
 import { downloadFile } from '@/utils'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -190,6 +190,8 @@ const editingIndex = ref<number | null>(null)
 const editingContent = ref('')
 const saving = ref(false)
 const viewMode = ref<'parse' | 'translation' | 'compare'>('parse')
+const translateSubmitting = ref(false)
+const pollingTimer = ref<number | null>(null)
 
 const parseProgress = computed(() => {
   return Math.max(0, Math.min(100, task.value?.parseProgress ?? 0))
@@ -344,8 +346,58 @@ const downloadOriginalPdf = async () => {
   }
 }
 
-const startTranslate = () => {
-  ElMessage.info('翻译功能开发中...')
+const refreshProgress = async () => {
+  const result: any = await getTranslationProgress(taskId)
+  const { parseProgress, translateProgress, status, message } = result
+  translationStore.updateTask(taskId, { parseProgress, translateProgress, status, message })
+}
+
+const stopPolling = () => {
+  if (pollingTimer.value != null) {
+    window.clearInterval(pollingTimer.value)
+    pollingTimer.value = null
+  }
+}
+
+const startPolling = () => {
+  if (pollingTimer.value != null) return
+  pollingTimer.value = window.setInterval(async () => {
+    try {
+      await refreshProgress()
+      const current = task.value
+      if (!current) return
+      if (current.status !== 'processing' || (current.translateProgress ?? 0) >= 100) {
+        stopPolling()
+      }
+    } catch {
+      return
+    }
+  }, 1500)
+}
+
+const startTranslate = async () => {
+  if (parseProgress.value < 100) {
+    ElMessage.warning('解析未完成，无法开始翻译')
+    return
+  }
+  if (translationProgress.value >= 100) {
+    ElMessage.success('翻译已完成')
+    return
+  }
+
+  translateSubmitting.value = true
+  try {
+    await submitTranslationTask(taskId)
+    translationStore.updateTask(taskId, { status: 'processing', translateProgress: 0 })
+    await refreshProgress()
+    startPolling()
+    ElMessage.success('翻译任务已提交')
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    ElMessage.error(detail || '提交翻译任务失败')
+  } finally {
+    translateSubmitting.value = false
+  }
 }
 
 const setViewMode = (mode: 'parse' | 'translation' | 'compare') => {
@@ -354,6 +406,15 @@ const setViewMode = (mode: 'parse' | 'translation' | 'compare') => {
 
 onMounted(() => {
   fetchDetail()
+  refreshProgress()
+    .then(() => {
+      if (task.value?.status === 'processing') startPolling()
+    })
+    .catch(() => undefined)
+})
+
+onUnmounted(() => {
+  stopPolling()
 })
 </script>
 

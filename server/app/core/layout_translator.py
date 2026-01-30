@@ -1,7 +1,7 @@
 import json
 import logging
 import time
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union, Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -35,45 +35,106 @@ class LayoutTranslator:
         self,
         input_yaml_path: str,
         output_yaml_path: Optional[str] = None,
+        task_id: Optional[str] = None,
         on_item: Optional[Callable[[int, str, bool], None]] = None,
+        on_finish: Optional[Callable[[Optional[str], str, Dict[str, Any]], None]] = None,
     ) -> List[Dict]:
         output_yaml_path = output_yaml_path or input_yaml_path
-        data, layouts = self._load_yaml_layouts(input_yaml_path)
-        self.translate_layouts(layouts, on_item=on_item)
-        self._save_yaml_layouts(output_yaml_path, data, layouts)
-        return layouts
+        final_status = "success"
+        final_info: Dict[str, Any] = {}
+
+        def _internal_finish(cb_task_id: Optional[str], status: str, info: Dict[str, Any]):
+            nonlocal final_status, final_info
+            final_status = status
+            final_info = info or {}
+
+        try:
+            data, layouts = self._load_yaml_layouts(input_yaml_path)
+            layouts = self.translate_layouts(
+                layouts,
+                task_id=task_id,
+                on_item=on_item,
+                on_finish=_internal_finish if on_finish else None,
+            )
+            try:
+                self._save_yaml_layouts(output_yaml_path, data, layouts)
+            except Exception as e:
+                if final_status == "fail":
+                    final_info.setdefault("save_error", str(e))
+                else:
+                    final_status = "fail"
+                    final_info = {**final_info, "error": str(e)}
+
+            if on_finish:
+                on_finish(task_id, final_status, {**final_info, "output_path": output_yaml_path})
+            return layouts
+        except Exception as e:
+            if on_finish:
+                on_finish(task_id, "fail", {"error": str(e), "output_path": output_yaml_path})
+            return []
 
     def translate_layouts(
         self,
         layouts: List[Dict],
+        task_id: Optional[str] = None,
         on_item: Optional[Callable[[int, str, bool], None]] = None,
+        on_finish: Optional[Callable[[Optional[str], str, Dict[str, Any]], None]] = None,
     ) -> List[Dict]:
-        for idx, item in enumerate(layouts):
-            layout_type = item.get("type")
-            if layout_type == "figure":
-                result = item.get("markdownContent") or ""
+        safe_layouts: List[Dict] = layouts or []
+        total = len(safe_layouts)
+        translated_count = 0
+        skipped_count = 0
+
+        try:
+            if self.api_key == "":
+                raise ValueError("api_key 不能为空")
+
+            for idx, item in enumerate(safe_layouts):
+                layout_type = item.get("type")
+                if layout_type == "figure":
+                    result = item.get("markdownContent") or ""
+                    skipped_count += 1
+                    if on_item:
+                        on_item(idx, result, True)
+                    continue
+
+                content = item.get("markdownContent") or ""
+                if content == "":
+                    skipped_count += 1
+                    if on_item:
+                        on_item(idx, "", True)
+                    continue
+
+                try:
+                    translated = self._translate_text(content)
+                except Exception as e:
+                    if on_finish:
+                        on_finish(
+                            task_id,
+                            "fail",
+                            {"error": str(e), "failed_index": idx, "total": total, "translated": translated_count},
+                        )
+                    return safe_layouts
+
+                item["translatedMarkdownContent"] = translated
+                translated_count += 1
+
                 if on_item:
-                    on_item(idx, result, True)
-                continue
+                    on_item(idx, translated, False)
 
-            content = item.get("markdownContent") or ""
-            if content == "":
-                if on_item:
-                    on_item(idx, "", True)
-                continue
-
-            translated = self._translate_text(content)
-            item["translatedMarkdownContent"] = translated
-
-            if on_item:
-                on_item(idx, translated, False)
-
-        return layouts
+            if on_finish:
+                on_finish(
+                    task_id,
+                    "success",
+                    {"total": total, "translated": translated_count, "skipped": skipped_count},
+                )
+            return safe_layouts
+        except Exception as e:
+            if on_finish:
+                on_finish(task_id, "fail", {"error": str(e), "total": total, "translated": translated_count})
+            return safe_layouts
 
     def _translate_text(self, text: str) -> str:
-        if self.api_key == "":
-            raise ValueError("api_key 不能为空")
-
         url = f"{self.base_url}/chat/completions"
         payload = {
             "model": self.model,

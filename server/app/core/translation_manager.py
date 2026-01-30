@@ -51,6 +51,12 @@ class TranslationManager:
                 logger.error(f"Task {task_id} not found in database")
                 return
 
+            if (task.parse_progress or 0) < 100:
+                task.status = "failed"
+                task.message = "解析未完成，无法开始翻译"
+                db.commit()
+                return
+
             config = db.query(Config).first()
             if not config or not config.llm_api_key:
                 task.status = "failed"
@@ -106,8 +112,25 @@ class TranslationManager:
                 except Exception as e:
                     logger.error(f"Error in translation callback for task {task_id}: {e}")
 
-            translator.translate_layouts(layouts, on_item=on_item)
+            translation_ok = True
+            finish_info: Dict[str, Any] = {}
+
+            def on_finish(cb_task_id: Optional[str], status: str, info: Dict[str, Any]):
+                nonlocal translation_ok, finish_info
+                finish_info = info or {}
+                if status != "success":
+                    translation_ok = False
+                    err = finish_info.get("error") or "翻译失败"
+                    task.status = "failed"
+                    task.message = str(err)
+                    db.commit()
+
+            translator.translate_layouts(layouts, task_id=task_id, on_item=on_item, on_finish=on_finish)
             self._save_yaml_layouts(yaml_path, data, layouts)
+
+            if not translation_ok:
+                logger.error(f"Task {task_id} translation failed: {finish_info}")
+                return
 
             task.status = "completed"
             task.translate_progress = 100

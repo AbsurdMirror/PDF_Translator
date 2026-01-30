@@ -49,6 +49,11 @@ export const getTranslationProgress = (taskId: string) => {
   return api.get(`/progress/${taskId}`)
 }
 
+// 提交翻译任务
+export const submitTranslationTask = (taskId: string) => {
+  return api.post('/translate', { taskId })
+}
+
 // 获取翻译列表
 export const getTranslationList = () => {
   return api.get('/translations')
