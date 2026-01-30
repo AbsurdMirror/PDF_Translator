@@ -155,6 +155,7 @@ async def get_task_result(task_id: str):
                 "type": item.get("type"),
                 "subType": item.get("subType"),
                 "markdownContent": item.get("markdownContent"),
+                "translatedMarkdownContent": item.get("translatedMarkdownContent") or "",
                 "pageNum": item.get("pageNum")
             })
             

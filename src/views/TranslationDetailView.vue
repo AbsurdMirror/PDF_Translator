@@ -147,6 +147,27 @@
           </el-table-column>
         </el-table>
 
+        <el-table
+          v-else-if="viewMode === 'translation' && parseResults.length > 0"
+          :data="parseResults"
+          style="width: 100%"
+          border
+          stripe
+        >
+          <el-table-column prop="pageNum" label="页码" width="80" align="center" />
+          <el-table-column prop="type" label="类型" width="100" align="center" />
+          <el-table-column prop="subType" label="子类型" width="120" align="center">
+            <template #default="{ row }">
+              {{ row.subType || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="translatedMarkdownContent" label="内容 (Markdown)">
+            <template #default="{ row }">
+              <div class="markdown-preview markdown-body" v-html="renderMarkdown(row.translatedMarkdownContent || row.markdownContent)"></div>
+            </template>
+          </el-table-column>
+        </el-table>
+
         <el-empty
           v-else-if="viewMode === 'translation'"
           description="暂无翻译结果"
