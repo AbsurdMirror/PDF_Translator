@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import time
 from typing import Callable, Dict, List, Optional, Tuple, Union, Any
 from urllib.error import HTTPError, URLError
@@ -21,6 +22,8 @@ class LayoutTranslator:
         request_timeout_seconds: int = 60,
         max_retries: int = 3,
         retry_backoff_seconds: float = 1.0,
+        debug: bool = False,
+        debug_output_path: str = "layout_translator_debug.log",
     ):
         self.api_key = api_key or ""
         self.source_lang = source_lang
@@ -30,6 +33,8 @@ class LayoutTranslator:
         self.request_timeout_seconds = int(request_timeout_seconds)
         self.max_retries = int(max_retries)
         self.retry_backoff_seconds = float(retry_backoff_seconds)
+        self.debug = bool(debug)
+        self.debug_output_path = debug_output_path or "layout_translator_debug.log"
 
     def translate_yaml_file(
         self,
@@ -49,7 +54,11 @@ class LayoutTranslator:
             final_info = info or {}
 
         try:
+            logger.info(
+                f"Translate YAML start: task_id={task_id}, input={input_yaml_path}, output={output_yaml_path}, model={self.model}"
+            )
             data, layouts = self._load_yaml_layouts(input_yaml_path)
+            logger.info(f"Translate YAML loaded: task_id={task_id}, total_layouts={len(layouts)}")
             layouts = self.translate_layouts(
                 layouts,
                 task_id=task_id,
@@ -59,6 +68,7 @@ class LayoutTranslator:
             try:
                 self._save_yaml_layouts(output_yaml_path, data, layouts)
             except Exception as e:
+                logger.error(f"Translate YAML save failed: task_id={task_id}, output={output_yaml_path}, err={e}")
                 if final_status == "fail":
                     final_info.setdefault("save_error", str(e))
                 else:
@@ -67,8 +77,10 @@ class LayoutTranslator:
 
             if on_finish:
                 on_finish(task_id, final_status, {**final_info, "output_path": output_yaml_path})
+            logger.info(f"Translate YAML finished: task_id={task_id}, status={final_status}, info={final_info}")
             return layouts
         except Exception as e:
+            logger.error(f"Translate YAML exception: task_id={task_id}, err={e}", exc_info=True)
             if on_finish:
                 on_finish(task_id, "fail", {"error": str(e), "output_path": output_yaml_path})
             return []
@@ -89,6 +101,9 @@ class LayoutTranslator:
             if self.api_key == "":
                 raise ValueError("api_key 不能为空")
 
+            logger.info(
+                f"Translate layouts start: task_id={task_id}, total={total}, model={self.model}, source={self.source_lang}, target={self.target_lang}"
+            )
             for idx, item in enumerate(safe_layouts):
                 layout_type = item.get("type")
                 if layout_type == "figure":
@@ -108,6 +123,10 @@ class LayoutTranslator:
                 try:
                     translated = self._translate_text(content)
                 except Exception as e:
+                    logger.error(
+                        f"Translate item failed: task_id={task_id}, idx={idx}, total={total}, err={e}",
+                        exc_info=True,
+                    )
                     if on_finish:
                         on_finish(
                             task_id,
@@ -128,8 +147,15 @@ class LayoutTranslator:
                     "success",
                     {"total": total, "translated": translated_count, "skipped": skipped_count},
                 )
+            logger.info(
+                f"Translate layouts finished: task_id={task_id}, status=success, total={total}, translated={translated_count}, skipped={skipped_count}"
+            )
             return safe_layouts
         except Exception as e:
+            logger.error(
+                f"Translate layouts exception: task_id={task_id}, total={total}, translated={translated_count}, skipped={skipped_count}, err={e}",
+                exc_info=True,
+            )
             if on_finish:
                 on_finish(task_id, "fail", {"error": str(e), "total": total, "translated": translated_count})
             return safe_layouts
@@ -155,6 +181,15 @@ class LayoutTranslator:
         last_error: Optional[Exception] = None
         for attempt in range(1, self.max_retries + 1):
             try:
+                start = time.time()
+                safe_text_len = len(text or "")
+                logger.debug(
+                    f"Translate request: model={self.model}, attempt={attempt}/{self.max_retries}, url={url}, text_len={safe_text_len}"
+                )
+                self._log_http_debug(
+                    action="translate_request",
+                    info={"url": url, "model": self.model, "attempt": attempt, "text_len": safe_text_len},
+                )
                 response = self._post_json(url, payload, headers=headers)
                 content = (
                     response.get("choices", [{}])[0]
@@ -163,9 +198,23 @@ class LayoutTranslator:
                 )
                 if not isinstance(content, str) or content == "":
                     raise ValueError("模型返回为空")
+                elapsed_ms = int((time.time() - start) * 1000)
+                logger.debug(f"Translate success: model={self.model}, elapsed_ms={elapsed_ms}, text_len={safe_text_len}")
+                self._log_http_debug(
+                    action="translate_success",
+                    info={"url": url, "model": self.model, "elapsed_ms": elapsed_ms, "text_len": safe_text_len},
+                )
                 return content
             except Exception as e:
                 last_error = e
+                logger.warning(
+                    f"Translate attempt failed: model={self.model}, attempt={attempt}/{self.max_retries}, err={e}"
+                )
+                self._log_http_debug(
+                    action="translate_fail",
+                    info={"url": url, "model": self.model, "attempt": attempt},
+                    error=e,
+                )
                 if attempt >= self.max_retries:
                     break
                 sleep_seconds = self.retry_backoff_seconds * attempt
@@ -179,15 +228,45 @@ class LayoutTranslator:
         try:
             with urlopen(req, timeout=self.request_timeout_seconds) as resp:
                 raw = resp.read().decode("utf-8")
+                self._log_http_debug(
+                    action="http_post_json",
+                    info={"url": url, "status": getattr(resp, "status", None), "response_len": len(raw or "")},
+                )
                 return json.loads(raw)
         except HTTPError as e:
             try:
                 raw = e.read().decode("utf-8")
             except Exception:
                 raw = ""
+            self._log_http_debug(
+                action="http_post_json_http_error",
+                info={"url": url, "status": getattr(e, "code", None), "response_len": len(raw or "")},
+                error=e,
+            )
             raise RuntimeError(f"HTTP {e.code}: {raw}") from e
         except URLError as e:
+            self._log_http_debug(action="http_post_json_url_error", info={"url": url}, error=e)
             raise RuntimeError(f"网络错误: {e}") from e
+        except Exception as e:
+            self._log_http_debug(action="http_post_json_exception", info={"url": url}, error=e)
+            raise
+
+    def _log_http_debug(self, action: str, info: Optional[Dict[str, Any]] = None, error: Any = None) -> None:
+        logger.debug(f"_log_http_debug: debug={self.debug}, debug_output_path={self.debug_output_path}")
+        if not self.debug:
+            return
+        try:
+            os.makedirs(os.path.dirname(self.debug_output_path) or ".", exist_ok=True)
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+            content = f"[{timestamp}] {action} "
+            if info:
+                content += json.dumps(info, ensure_ascii=False)
+            if error is not None:
+                content += f" ERROR: {error}"
+            with open(self.debug_output_path, "a", encoding="utf-8") as f:
+                f.write(content + "\n")
+        except Exception as e:
+            logger.error(f"Error logging debug: {e}")
 
     def _load_yaml_layouts(self, yaml_path: str) -> Tuple[Union[Dict, List], List[Dict]]:
         with open(yaml_path, "r", encoding="utf-8") as f:

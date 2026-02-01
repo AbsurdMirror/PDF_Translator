@@ -21,6 +21,8 @@ async def lifespan(app: FastAPI):
     
     logger.info("Creating database tables...")
     Base.metadata.create_all(bind=engine)
+
+    logger.info("lifespan startup complete")
     
     yield
     # 关闭时执行 (如果有需要清理的资源)
@@ -39,6 +41,8 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(api_router, prefix="/api")
+
+logger.info("Application started successfully")
 
 if __name__ == "__main__":
     import uvicorn

@@ -47,6 +47,7 @@ class PDFParseManager:
     def _execute_task(self, task_id: str):
         logger.info(f"Starting execution for task {task_id}")
         db = SessionLocal()
+        task = None
         try:
             task = db.query(Task).filter(Task.task_id == task_id).first()
             if not task:
@@ -55,6 +56,7 @@ class PDFParseManager:
 
             config = db.query(Config).first()
             if not config or not config.aliyun_access_key_id or not config.aliyun_access_key_secret:
+                logger.warning(f"Task {task_id} missing Aliyun AccessKey config")
                 task.status = "failed"
                 task.message = "系统配置缺失 (请在设置页面配置阿里云AccessKey)"
                 db.commit()
@@ -69,9 +71,15 @@ class PDFParseManager:
             output_filename = "parse_result.yaml"
             output_path = os.path.join(output_dir, output_filename)
             figures_dir = os.path.join(output_dir, "figures")
+            logger.info(
+                f"Task {task_id} parse paths: file={task.file_path}, output={output_path}, figures_dir={figures_dir}"
+            )
 
             def on_update(tid, old_status, new_status, processing):
                 try:
+                    logger.debug(
+                        f"Task {tid} parser status update: {old_status} -> {new_status}, processing={processing}"
+                    )
                     if new_status == "processing":
                         task.status = "processing"
                         cloud_percent = float(processing)
@@ -87,10 +95,11 @@ class PDFParseManager:
 
                     db.commit()
                 except Exception as e:
-                    logger.error(f"Error updating status callback: {e}")
+                    logger.error(f"Error updating status callback: {e}", exc_info=True)
 
             def on_data(tid, new_layouts):
                 try:
+                    logger.debug(f"Task {tid} received layouts: count={len(new_layouts or [])}")
                     if not os.path.exists(figures_dir):
                         os.makedirs(figures_dir, exist_ok=True)
 
@@ -125,7 +134,7 @@ class PDFParseManager:
                                                 f"Failed to download figure {url}: status {resp.status_code}"
                                             )
                                     except Exception as e:
-                                        logger.error(f"Error downloading figure {url}: {e}")
+                                        logger.error(f"Error downloading figure {url}: {e}", exc_info=True)
 
                     if parser.total_layout_num > 0 and task.parse_progress >= 85:
                         ratio = parser.processed_layout_num / parser.total_layout_num
@@ -141,14 +150,18 @@ class PDFParseManager:
                     }
                     with open(output_path, "w", encoding="utf-8") as f:
                         yaml.safe_dump(result_data, f, allow_unicode=True, sort_keys=False)
+                    logger.debug(
+                        f"Task {tid} wrote parse_result.yaml: output={output_path}, total_layouts={parser.total_layout_num}, processed={parser.processed_layout_num}"
+                    )
                 except Exception as e:
-                    logger.error(f"Error updating data callback: {e}")
+                    logger.error(f"Error updating data callback: {e}", exc_info=True)
 
             endpoint = config.aliyun_endpoint or "docmind-api.cn-hangzhou.aliyuncs.com"
             if endpoint.startswith("https://"):
                 endpoint = endpoint[8:]
             elif endpoint.startswith("http://"):
                 endpoint = endpoint[7:]
+            logger.info(f"Task {task_id} parser endpoint: {endpoint}")
 
             parser = PDFParser(
                 task_id=task_id,
@@ -159,10 +172,14 @@ class PDFParseManager:
                 endpoint=endpoint,
                 on_update=on_update,
                 on_data=on_data,
+                debug=True
             )
 
             logger.info(f"Running parser for {task_id}")
             parser.run()
+            logger.info(
+                f"Task {task_id} parser run finished: status={parser.task_status}, total={parser.total_layout_num}, processed={parser.processed_layout_num}"
+            )
 
             if parser.task_status == "success":
                 result_data = {
@@ -187,9 +204,10 @@ class PDFParseManager:
         except Exception as e:
             logger.error(f"Task execution exception for {task_id}: {e}", exc_info=True)
             try:
-                task.status = "failed"
-                task.message = f"内部错误: {str(e)}"
-                db.commit()
+                if task is not None:
+                    task.status = "failed"
+                    task.message = f"内部错误: {str(e)}"
+                    db.commit()
             except Exception:
                 pass
         finally:

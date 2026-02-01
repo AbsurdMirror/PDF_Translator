@@ -45,6 +45,7 @@ class TranslationManager:
     def _execute_task(self, task_id: str):
         logger.info(f"Starting translation for task {task_id}")
         db = SessionLocal()
+        task: Optional[Task] = None
         try:
             task = db.query(Task).filter(Task.task_id == task_id).first()
             if not task:
@@ -52,6 +53,7 @@ class TranslationManager:
                 return
 
             if (task.parse_progress or 0) < 100:
+                logger.warning(f"Task {task_id} parse not finished: parse_progress={task.parse_progress}")
                 task.status = "failed"
                 task.message = "解析未完成，无法开始翻译"
                 db.commit()
@@ -59,6 +61,7 @@ class TranslationManager:
 
             config = db.query(Config).first()
             if not config or not config.llm_api_key:
+                logger.warning(f"Task {task_id} missing LLM config")
                 task.status = "failed"
                 task.message = "系统配置缺失 (请在设置页面配置 LLM API Key)"
                 db.commit()
@@ -67,6 +70,7 @@ class TranslationManager:
             output_dir = os.path.dirname(task.file_path)
             yaml_path = os.path.join(output_dir, "parse_result.yaml")
             if not os.path.exists(yaml_path):
+                logger.warning(f"Task {task_id} parse_result.yaml not found: {yaml_path}")
                 task.status = "failed"
                 task.message = "未找到解析结果 parse_result.yaml"
                 db.commit()
@@ -79,12 +83,16 @@ class TranslationManager:
 
             data, layouts = self._load_yaml_layouts(yaml_path)
             total = len(layouts)
+            logger.info(f"Task {task_id} loaded layouts: total={total}, yaml={yaml_path}")
 
             source_lang = self._normalize_lang(task.source_lang or "auto")
             target_lang = self._normalize_lang(task.target_lang or "Chinese")
 
             model = config.llm_model or "qwen-mt-flash"
             base_url = config.llm_endpoint or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            logger.info(
+                f"Task {task_id} translation config: model={model}, base_url={base_url}, source_lang={source_lang}, target_lang={target_lang}"
+            )
 
             translator = LayoutTranslator(
                 api_key=config.llm_api_key,
@@ -92,6 +100,7 @@ class TranslationManager:
                 target_lang=target_lang,
                 model=model,
                 base_url=base_url,
+                debug=True
             )
 
             def on_item(idx: int, result: str, skipped: bool):
@@ -121,9 +130,12 @@ class TranslationManager:
                 if status != "success":
                     translation_ok = False
                     err = finish_info.get("error") or "翻译失败"
+                    logger.error(f"Task {task_id} translation finished with failure: {err}")
                     task.status = "failed"
                     task.message = str(err)
                     db.commit()
+                else:
+                    logger.info(f"Task {task_id} translation finished successfully: {finish_info}")
 
             translator.translate_layouts(layouts, task_id=task_id, on_item=on_item, on_finish=on_finish)
             self._save_yaml_layouts(yaml_path, data, layouts)
@@ -140,9 +152,10 @@ class TranslationManager:
         except Exception as e:
             logger.error(f"Translation execution exception for {task_id}: {e}", exc_info=True)
             try:
-                task.status = "failed"
-                task.message = f"内部错误: {str(e)}"
-                db.commit()
+                if task is not None:
+                    task.status = "failed"
+                    task.message = f"内部错误: {str(e)}"
+                    db.commit()
             except Exception:
                 pass
         finally:

@@ -23,7 +23,7 @@ class PDFParser:
                  access_key_id: Optional[str] = None, 
                  access_key_secret: Optional[str] = None, 
                  debug: bool = False, 
-                 debug_output_path: str = "debug.log", 
+                 debug_output_path: str = "pdf_parser_debug.log", 
                  layout_step_size: int = 10,
                  on_update: Optional[Callable] = None,
                  on_data: Optional[Callable] = None,
@@ -84,6 +84,7 @@ class PDFParser:
         
         try:
             # 直接执行主逻辑，不创建新线程
+            logger.info(f"开始解析任务: file_path={self.file_path}, endpoint={self.endpoint}")
             self._run_task_sync(interval, stop_event)
         except KeyboardInterrupt:
             logger.info(f"任务 {self.task_id} 收到键盘中断，正在停止...")
@@ -124,6 +125,7 @@ class PDFParser:
 
         self.task_id = task_id
         self.task_status = "init"
+        logger.info(f"任务进入轮询阶段: task_id={task_id}, interval={interval}s, step={self.layout_step_size}")
         
         # 2. 轮询状态与结果
         while not self._stop_event.is_set():
@@ -138,7 +140,7 @@ class PDFParser:
                 if finished:
                     break
             except Exception as e:
-                logger.error(f"轮询过程出错: {e}")
+                logger.error(f"轮询过程出错: {e}", exc_info=True)
                 
             # 使用 wait 代替 sleep，支持响应 stop()
             self._stop_event.wait(interval)
@@ -177,6 +179,9 @@ class PDFParser:
 
         # 1. 查询状态
         status, num_successful, processing = self._check_status(task_id)
+        logger.debug(
+            f"状态查询: task_id={task_id}, status={status}, successful={num_successful}, processing={processing}, local_processed={self.processed_layout_num}"
+        )
         
         if num_successful >= self.total_layout_num:
             self.total_layout_num = num_successful
@@ -196,7 +201,9 @@ class PDFParser:
             step = self.layout_step_size
         
             layouts = self._get_result(task_id, start_num, step)
-            logger.debug(f"processed_layout_num: {self.processed_layout_num}, total_layout_num: {self.total_layout_num}")
+            logger.debug(
+                f"结果拉取: task_id={task_id}, start={start_num}, step={step}, got={len(layouts or [])}, processed={self.processed_layout_num}, total={self.total_layout_num}"
+            )
 
             if not layouts: break
             
@@ -246,6 +253,7 @@ class PDFParser:
             return status, num, processing
         except Exception as e:
             self._log_http_debug("query_doc_parser_status", None, error=e)
+            logger.error(f"查询状态失败: task_id={task_id}, err={e}", exc_info=True)
             return "fail", 0, 0.0
 
     def _get_result(self, task_id: str, start_num: int, step: int) -> List[dict]:
@@ -256,13 +264,16 @@ class PDFParser:
             )
             response = self.client.get_doc_parser_result(request)
             self._log_http_debug("get_doc_parser_result", request, response)
-            return response.body.data['layouts'] if (response.body.data and response.body.data['layouts']) else []
+            layouts = response.body.data['layouts'] if (response.body.data and response.body.data['layouts']) else []
+            return layouts
         except Exception as e:
             self._log_http_debug("get_doc_parser_result", request if 'request' in locals() else None, error=e)
+            logger.error(f"获取结果失败: task_id={task_id}, start={start_num}, step={step}, err={e}", exc_info=True)
             return []
 
     def _log_http_debug(self, action: str, req: any, resp: any = None, error: any = None):
         """记录调试日志"""
+        logger.debug(f"_log_http_debug: debug={self.debug}, debug_output_path={self.debug_output_path}")
         if not self.debug: return
         try:
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
