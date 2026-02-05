@@ -172,6 +172,7 @@ class PDFParseManager:
                 endpoint=endpoint,
                 on_update=on_update,
                 on_data=on_data,
+                debug_output_path=os.path.join(output_dir, "pdf_parser_debug.log"),
                 debug=True
             )
 
@@ -217,4 +218,3 @@ class PDFParseManager:
 
 
 pdf_parse_manager = PDFParseManager()
-

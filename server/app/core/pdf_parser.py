@@ -3,6 +3,7 @@ import os
 import json
 import time
 import threading
+from pprint import pformat
 from typing import Dict, List, Optional, Callable
 from alibabacloud_docmind_api20220711.client import Client as docmind_api20220711Client
 from alibabacloud_tea_openapi import models as open_api_models
@@ -112,6 +113,52 @@ class PDFParser:
             except Exception:
                 pass
         return docmind_api20220711Client(config)
+
+    def _safe_serialize(self, obj: any, depth: int = 5):
+        if depth <= 0:
+            return repr(obj)
+        if obj is None or isinstance(obj, (str, int, float, bool)):
+            return obj
+        if isinstance(obj, bytes):
+            return {"type": "bytes", "len": len(obj)}
+        if isinstance(obj, dict):
+            return {str(k): self._safe_serialize(v, depth - 1) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple, set)):
+            return [self._safe_serialize(v, depth - 1) for v in obj]
+        if hasattr(obj, "to_map") and callable(getattr(obj, "to_map")):
+            try:
+                return self._safe_serialize(obj.to_map(), depth - 1)
+            except Exception:
+                return repr(obj)
+        if hasattr(obj, "to_json_string") and callable(getattr(obj, "to_json_string")):
+            try:
+                return obj.to_json_string()
+            except Exception:
+                return repr(obj)
+        if hasattr(obj, "__dict__"):
+            try:
+                return self._safe_serialize(vars(obj), depth - 1)
+            except Exception:
+                return repr(obj)
+        return repr(obj)
+
+    def _get_response_status(self, resp: any):
+        for attr in ("status_code", "status", "code"):
+            try:
+                val = getattr(resp, attr, None)
+                if val is not None:
+                    return val
+            except Exception:
+                pass
+        try:
+            http_resp = getattr(resp, "http_response", None)
+            if http_resp is not None:
+                val = getattr(http_resp, "status_code", None)
+                if val is not None:
+                    return val
+        except Exception:
+            pass
+        return None
 
     def _run_task_sync(self, interval, external_stop_event=None):
         """任务主流程（同步阻塞）"""
@@ -273,16 +320,26 @@ class PDFParser:
 
     def _log_http_debug(self, action: str, req: any, resp: any = None, error: any = None):
         """记录调试日志"""
-        logger.debug(f"_log_http_debug: debug={self.debug}, debug_output_path={self.debug_output_path}")
+        debug_path = self.debug_output_path
+        logger.debug(f"_log_http_debug: debug={self.debug}, debug_output_path={debug_path}")
         if not self.debug: return
         try:
+            os.makedirs(os.path.dirname(debug_path) or ".", exist_ok=True)
+            status = self._get_response_status(resp) if resp is not None else None
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-            # 简化版日志记录，只记录关键信息避免过大
-            content = f"[{timestamp}] {action} "
-            if error: content += f"ERROR: {error}"
-            elif resp: content += "SUCCESS"
-            
-            with open(self.debug_output_path, 'a', encoding='utf-8') as f:
-                f.write(content + "\n")
+            lines: List[str] = []
+            lines.append(
+                f"{timestamp} - pdf_parser - DEBUG_HTTP - task_id={self.task_id} action={action} status={status}"
+            )
+            lines.append("REQUEST:")
+            lines.extend(["  " + line for line in pformat(self._safe_serialize(req), width=160).splitlines()])
+            if resp is not None:
+                lines.append("RESPONSE:")
+                lines.extend(["  " + line for line in pformat(self._safe_serialize(resp), width=160).splitlines()])
+            if error is not None:
+                lines.append(f"ERROR: {type(error).__name__}: {error}")
+            lines.append("-" * 120)
+            with open(debug_path, 'a', encoding='utf-8') as f:
+                f.write("\n".join(lines) + "\n")
         except Exception as e: 
             logger.error(f"Error logging debug: {e}")

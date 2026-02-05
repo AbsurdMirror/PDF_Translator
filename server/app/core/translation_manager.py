@@ -100,6 +100,7 @@ class TranslationManager:
                 target_lang=target_lang,
                 model=model,
                 base_url=base_url,
+                debug_output_path=os.path.join(output_dir, "layout_translator_debug.log"),
                 debug=True
             )
 
@@ -206,4 +207,3 @@ class TranslationManager:
 
 
 translation_manager = TranslationManager()
-

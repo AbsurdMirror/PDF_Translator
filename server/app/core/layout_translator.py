@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import time
+from pprint import pformat
 from typing import Callable, Dict, List, Optional, Tuple, Union, Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -186,10 +187,6 @@ class LayoutTranslator:
                 logger.debug(
                     f"Translate request: model={self.model}, attempt={attempt}/{self.max_retries}, url={url}, text_len={safe_text_len}"
                 )
-                self._log_http_debug(
-                    action="translate_request",
-                    info={"url": url, "model": self.model, "attempt": attempt, "text_len": safe_text_len},
-                )
                 response = self._post_json(url, payload, headers=headers)
                 content = (
                     response.get("choices", [{}])[0]
@@ -200,10 +197,6 @@ class LayoutTranslator:
                     raise ValueError("模型返回为空")
                 elapsed_ms = int((time.time() - start) * 1000)
                 logger.debug(f"Translate success: model={self.model}, elapsed_ms={elapsed_ms}, text_len={safe_text_len}")
-                self._log_http_debug(
-                    action="translate_success",
-                    info={"url": url, "model": self.model, "elapsed_ms": elapsed_ms, "text_len": safe_text_len},
-                )
                 return content
             except Exception as e:
                 last_error = e
@@ -212,7 +205,7 @@ class LayoutTranslator:
                 )
                 self._log_http_debug(
                     action="translate_fail",
-                    info={"url": url, "model": self.model, "attempt": attempt},
+                    request={"url": url, "payload": payload, "headers": headers, "attempt": attempt},
                     error=e,
                 )
                 if attempt >= self.max_retries:
@@ -228,11 +221,14 @@ class LayoutTranslator:
         try:
             with urlopen(req, timeout=self.request_timeout_seconds) as resp:
                 raw = resp.read().decode("utf-8")
+                parsed = json.loads(raw)
                 self._log_http_debug(
                     action="http_post_json",
-                    info={"url": url, "status": getattr(resp, "status", None), "response_len": len(raw or "")},
+                    request={"url": url, "method": "POST", "headers": headers, "payload": payload},
+                    response={"raw": raw, "json": parsed},
+                    status=getattr(resp, "status", None),
                 )
-                return json.loads(raw)
+                return parsed
         except HTTPError as e:
             try:
                 raw = e.read().decode("utf-8")
@@ -240,31 +236,65 @@ class LayoutTranslator:
                 raw = ""
             self._log_http_debug(
                 action="http_post_json_http_error",
-                info={"url": url, "status": getattr(e, "code", None), "response_len": len(raw or "")},
+                request={"url": url, "method": "POST", "headers": headers, "payload": payload},
+                response={"raw": raw},
+                status=getattr(e, "code", None),
                 error=e,
             )
             raise RuntimeError(f"HTTP {e.code}: {raw}") from e
         except URLError as e:
-            self._log_http_debug(action="http_post_json_url_error", info={"url": url}, error=e)
+            self._log_http_debug(
+                action="http_post_json_url_error",
+                request={"url": url, "method": "POST", "headers": headers, "payload": payload},
+                error=e,
+            )
             raise RuntimeError(f"网络错误: {e}") from e
         except Exception as e:
-            self._log_http_debug(action="http_post_json_exception", info={"url": url}, error=e)
+            self._log_http_debug(
+                action="http_post_json_exception",
+                request={"url": url, "method": "POST", "headers": headers, "payload": payload},
+                error=e,
+            )
             raise
 
-    def _log_http_debug(self, action: str, info: Optional[Dict[str, Any]] = None, error: Any = None) -> None:
-        logger.debug(f"_log_http_debug: debug={self.debug}, debug_output_path={self.debug_output_path}")
+    def _log_http_debug(
+        self,
+        action: str,
+        request: Optional[Dict[str, Any]] = None,
+        response: Optional[Dict[str, Any]] = None,
+        status: Optional[Union[int, str]] = None,
+        error: Any = None,
+    ) -> None:
+        debug_path = self.debug_output_path
+        logger.info(f"_log_http_debug: debug={self.debug}, debug_output_path={debug_path}")
         if not self.debug:
             return
         try:
-            os.makedirs(os.path.dirname(self.debug_output_path) or ".", exist_ok=True)
+            os.makedirs(os.path.dirname(debug_path) or ".", exist_ok=True)
+            safe_request = request or {}
+            safe_headers = dict(safe_request.get("headers") or {})
+            if "Authorization" in safe_headers:
+                safe_headers["Authorization"] = "Bearer ***"
+            if "authorization" in safe_headers:
+                safe_headers["authorization"] = "Bearer ***"
+            if request is not None:
+                safe_request = {**safe_request, "headers": safe_headers}
+
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-            content = f"[{timestamp}] {action} "
-            if info:
-                content += json.dumps(info, ensure_ascii=False)
+            lines: List[str] = []
+            lines.append(f"{timestamp} - layout_translator - DEBUG_HTTP - action={action} status={status}")
+            if request is not None:
+                lines.append("REQUEST:")
+                lines.extend(["  " + line for line in pformat(safe_request, width=160).splitlines()])
+            if response is not None:
+                lines.append("RESPONSE:")
+                lines.extend(["  " + line for line in pformat(response, width=160).splitlines()])
             if error is not None:
-                content += f" ERROR: {error}"
-            with open(self.debug_output_path, "a", encoding="utf-8") as f:
-                f.write(content + "\n")
+                lines.append(f"ERROR: {type(error).__name__}: {error}")
+            lines.append("-" * 120)
+
+            with open(debug_path, "a", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
         except Exception as e:
             logger.error(f"Error logging debug: {e}")
 
@@ -294,4 +324,3 @@ class LayoutTranslator:
 
         with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(to_write, f, allow_unicode=True, sort_keys=False)
-
