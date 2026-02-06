@@ -187,7 +187,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, Download, Check, Close } from '@element-plus/icons-vue'
 import { useTranslationStore } from '@/stores/translation'
 import { getTaskDetail, downloadSourceFile, updateTaskResult, getTranslationProgress, submitTranslationTask } from '@/services/api'
@@ -401,9 +401,21 @@ const startTranslate = async () => {
     ElMessage.warning('解析未完成，无法开始翻译')
     return
   }
-  if (translationProgress.value >= 100) {
-    ElMessage.success('翻译已完成')
+  if (task.value?.status === 'processing' && translationProgress.value < 100) {
+    startPolling()
+    ElMessage.info('翻译进行中，请稍候')
     return
+  }
+  if (translationProgress.value >= 100) {
+    try {
+      await ElMessageBox.confirm('该任务已翻译完成，是否再次翻译？', '再次翻译确认', {
+        confirmButtonText: '再次翻译',
+        cancelButtonText: '取消',
+        type: 'warning'
+      })
+    } catch {
+      return
+    }
   }
 
   translateSubmitting.value = true

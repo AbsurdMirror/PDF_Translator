@@ -85,7 +85,7 @@ class TranslationManager:
             total = len(layouts)
             logger.info(f"Task {task_id} loaded layouts: total={total}, yaml={yaml_path}")
 
-            source_lang = self._normalize_lang(task.source_lang or "auto")
+            source_lang = self._normalize_lang(task.source_lang or "English")
             target_lang = self._normalize_lang(task.target_lang or "Chinese")
 
             model = config.llm_model or "qwen-mt-flash"

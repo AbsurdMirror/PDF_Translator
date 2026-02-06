@@ -33,15 +33,22 @@ api.interceptors.response.use(
 )
 
 // 文件上传
-export const uploadFile = (file: File) => {
+export const uploadFile = (file: File, sourceLang: string, targetLang: string) => {
   const formData = new FormData()
   formData.append('file', file)
+  formData.append('source_lang', sourceLang)
+  formData.append('target_lang', targetLang)
 
   return api.post('/upload', formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
   })
+}
+
+// 获取支持的语言列表
+export const getLanguages = () => {
+  return api.get('/languages')
 }
 
 // 获取翻译进度

@@ -40,6 +40,35 @@
         </div>
       </div>
 
+      <!-- 语言选择 -->
+      <div class="language-options" v-if="currentFile">
+        <div class="lang-select-group">
+          <span class="label">源语言</span>
+          <el-select v-model="sourceLang" placeholder="请选择" style="width: 140px">
+            <el-option
+              v-for="item in languages"
+              :key="item.value"
+              :label="item.name"
+              :value="item.value"
+            />
+          </el-select>
+        </div>
+        
+        <el-icon class="arrow-icon"><Right /></el-icon>
+        
+        <div class="lang-select-group">
+          <span class="label">目标语言</span>
+          <el-select v-model="targetLang" placeholder="请选择" style="width: 140px">
+            <el-option
+              v-for="item in languages"
+              :key="item.value"
+              :label="item.name"
+              :value="item.value"
+            />
+          </el-select>
+        </div>
+      </div>
+
       <!-- 操作按钮 -->
       <div class="action-buttons">
         <el-button
@@ -66,11 +95,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { UploadFilled, Document, Delete } from '@element-plus/icons-vue'
+import { UploadFilled, Document, Delete, Right } from '@element-plus/icons-vue'
 import { useTranslationStore } from '@/stores/translation'
-import { uploadFile } from '@/services/api'
+import { uploadFile, getLanguages } from '@/services/api'
 import { formatFileSize } from '@/utils'
 import { useRouter } from 'vue-router'
 
@@ -82,6 +111,22 @@ const fileInput = ref<HTMLInputElement>()
 const currentFile = ref<File | null>(null)
 const isDragOver = ref(false)
 const isUploading = ref(false)
+
+// 语言相关状态
+const languages = ref<{name: string, value: string}[]>([])
+const sourceLang = ref('English')
+const targetLang = ref('English')
+
+onMounted(async () => {
+  try {
+    const res: any = await getLanguages()
+    if (res.languages) {
+      languages.value = res.languages
+    }
+  } catch (error) {
+    console.error('获取语言列表失败', error)
+  }
+})
 
 
 // 选择文件
@@ -144,7 +189,7 @@ const startTranslation = async () => {
 
   try {
     // 上传文件
-    const result: any = await uploadFile(currentFile.value)
+    const result: any = await uploadFile(currentFile.value, sourceLang.value, targetLang.value)
 
     // 添加任务到store
     const newTask = {
@@ -265,6 +310,32 @@ const startTranslation = async () => {
   margin: 0;
 }
 
+
+.language-options {
+  margin-top: 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  padding: 0 20px;
+}
+
+.lang-select-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lang-select-group .label {
+  font-size: 14px;
+  color: #606266;
+  white-space: nowrap;
+}
+
+.arrow-icon {
+  color: #909399;
+  font-size: 20px;
+}
 
 .action-buttons {
   margin-top: 24px;

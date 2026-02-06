@@ -13,8 +13,8 @@ class Task(Base):
     parse_progress = Column(Integer, default=0)
     translate_progress = Column(Integer, default=0)
     message = Column(String, nullable=True)
-    source_lang = Column(String, default="auto")
-    target_lang = Column(String, default="zh-CN")
+    source_lang = Column(String, default="English")
+    target_lang = Column(String, default="Chinese")
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 

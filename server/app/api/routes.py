@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse, Response, FileResponse
 from sqlalchemy.orm import Session
 from typing import List
@@ -29,15 +29,31 @@ from ..core.translation_manager import translation_manager
 import logging
 logger = logging.getLogger(__name__)
 
+SUPPORTED_LANGUAGES = [
+    {"name": "中文", "value": "Chinese"},
+    {"name": "英文", "value": "English"}
+]
+
 router = APIRouter()
+
+@router.get("/languages")
+async def get_languages():
+    return {"languages": SUPPORTED_LANGUAGES}
 
 @router.post("/upload")
 async def upload_file(
     background_tasks: BackgroundTasks, 
     file: UploadFile = File(...),
+    source_lang: str = Form("English"),
+    target_lang: str = Form("English"),
     db: Session = Depends(get_db)
 ):
     try:
+        # 验证语言
+        valid_values = [lang["value"] for lang in SUPPORTED_LANGUAGES]
+        if source_lang not in valid_values or target_lang not in valid_values:
+            raise HTTPException(status_code=400, detail="不支持的语言类型")
+
         # 生成任务 ID
         task_id = f"task_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
         
@@ -55,6 +71,8 @@ async def upload_file(
             task_id=task_id,
             filename=file.filename,
             file_path=str(file_path),
+            source_lang=source_lang,
+            target_lang=target_lang,
             status="pending",
             parse_progress=0,
             translate_progress=0,

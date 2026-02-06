@@ -16,7 +16,7 @@ class LayoutTranslator:
     def __init__(
         self,
         api_key: str = "",
-        source_lang: str = "auto",
+        source_lang: str = "English",
         target_lang: str = "Chinese",
         model: str = "qwen-mt-flash",
         base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -170,6 +170,7 @@ class LayoutTranslator:
                 "translation_options": {
                     "source_lang": self.source_lang,
                     "target_lang": self.target_lang,
+                    "domains": "Academic paper translation. Translate the source text into the target language accurately without providing explanations or summaries."
                 }
             },
         }
