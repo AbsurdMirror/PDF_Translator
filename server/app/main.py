@@ -22,6 +22,20 @@ async def lifespan(app: FastAPI):
     logger.info("Creating database tables...")
     Base.metadata.create_all(bind=engine)
 
+    logger.info("Checking database schema...")
+    with engine.connect() as conn:
+        try:
+            # Check if column exists in configs table
+            # SQLite specific check
+            result = conn.execute(text("PRAGMA table_info(configs)"))
+            columns = [row.name for row in result.fetchall()]
+            if "translation_engine" not in columns:
+                logger.info("Adding missing column 'translation_engine' to 'configs' table")
+                conn.execute(text("ALTER TABLE configs ADD COLUMN translation_engine VARCHAR DEFAULT 'llm'"))
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Schema check failed: {e}")
+
     logger.info("lifespan startup complete")
     
     yield

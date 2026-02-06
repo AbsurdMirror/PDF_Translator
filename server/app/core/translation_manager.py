@@ -60,12 +60,28 @@ class TranslationManager:
                 return
 
             config = db.query(Config).first()
-            if not config or not config.llm_api_key:
-                logger.warning(f"Task {task_id} missing LLM config")
+            if not config:
+                logger.warning(f"Task {task_id} missing config")
                 task.status = "failed"
-                task.message = "系统配置缺失 (请在设置页面配置 LLM API Key)"
+                task.message = "系统配置缺失"
                 db.commit()
                 return
+
+            translation_engine = config.translation_engine or "llm"
+            if translation_engine == "llm":
+                if not config.llm_api_key:
+                    logger.warning(f"Task {task_id} missing LLM config")
+                    task.status = "failed"
+                    task.message = "系统配置缺失 (请在设置页面配置 LLM API Key)"
+                    db.commit()
+                    return
+            elif translation_engine == "aliyun":
+                if not config.aliyun_access_key_id or not config.aliyun_access_key_secret:
+                    logger.warning(f"Task {task_id} missing Aliyun MT config")
+                    task.status = "failed"
+                    task.message = "系统配置缺失 (请在设置页面配置阿里云 Access Key)"
+                    db.commit()
+                    return
 
             output_dir = os.path.dirname(task.file_path)
             yaml_path = os.path.join(output_dir, "parse_result.yaml")
@@ -91,7 +107,7 @@ class TranslationManager:
             model = config.llm_model or "qwen-mt-flash"
             base_url = config.llm_endpoint or "https://dashscope.aliyuncs.com/compatible-mode/v1"
             logger.info(
-                f"Task {task_id} translation config: model={model}, base_url={base_url}, source_lang={source_lang}, target_lang={target_lang}"
+                f"Task {task_id} translation config: engine={translation_engine}, model={model}, base_url={base_url}, source_lang={source_lang}, target_lang={target_lang}"
             )
 
             translator = LayoutTranslator(
@@ -100,6 +116,9 @@ class TranslationManager:
                 target_lang=target_lang,
                 model=model,
                 base_url=base_url,
+                translation_engine=translation_engine,
+                aliyun_access_key_id=config.aliyun_access_key_id,
+                aliyun_access_key_secret=config.aliyun_access_key_secret,
                 debug_output_path=os.path.join(output_dir, "layout_translator_debug.log"),
                 debug=True
             )

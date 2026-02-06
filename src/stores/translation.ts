@@ -19,6 +19,7 @@ export interface TranslationConfig {
   llmApiKey: string
   llmModel: string
   llmEndpoint: string
+  translationEngine?: string
 }
 
 export const useTranslationStore = defineStore('translation', () => {
@@ -33,7 +34,8 @@ export const useTranslationStore = defineStore('translation', () => {
     aliyunEndpoint: 'https://docmind-api.cn-hangzhou.aliyuncs.com',
     llmApiKey: '',
     llmModel: '',
-    llmEndpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+    llmEndpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    translationEngine: 'llm'
   })
 
   // 添加翻译任务

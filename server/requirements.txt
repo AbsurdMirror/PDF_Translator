@@ -9,4 +9,4 @@ alibabacloud_tea_openapi>=0.3.8
 alibabacloud_tea_util>=0.3.11
 alibabacloud_credentials>=0.3.2
 PyYAML>=6.0
-
+requests>=2.31.0

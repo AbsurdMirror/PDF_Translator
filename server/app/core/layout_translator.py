@@ -8,6 +8,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import yaml
+from .aliyun_mt_client import AliyunMTClient
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,9 @@ class LayoutTranslator:
         target_lang: str = "Chinese",
         model: str = "qwen-mt-flash",
         base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        translation_engine: str = "llm",
+        aliyun_access_key_id: str = "",
+        aliyun_access_key_secret: str = "",
         request_timeout_seconds: int = 60,
         max_retries: int = 3,
         retry_backoff_seconds: float = 1.0,
@@ -31,11 +35,22 @@ class LayoutTranslator:
         self.target_lang = target_lang
         self.model = model
         self.base_url = (base_url or "").rstrip("/")
+        self.translation_engine = translation_engine
+        self.aliyun_access_key_id = aliyun_access_key_id
+        self.aliyun_access_key_secret = aliyun_access_key_secret
+
         self.request_timeout_seconds = int(request_timeout_seconds)
         self.max_retries = int(max_retries)
         self.retry_backoff_seconds = float(retry_backoff_seconds)
         self.debug = bool(debug)
         self.debug_output_path = debug_output_path or "layout_translator_debug.log"
+
+        self.aliyun_mt_client = None
+        if self.translation_engine == "aliyun":
+            if not self.aliyun_access_key_id or not self.aliyun_access_key_secret:
+                logger.warning("Translation engine is 'aliyun' but credentials missing.")
+            else:
+                self.aliyun_mt_client = AliyunMTClient(self.aliyun_access_key_id, self.aliyun_access_key_secret)
 
     def translate_yaml_file(
         self,
@@ -56,7 +71,7 @@ class LayoutTranslator:
 
         try:
             logger.info(
-                f"Translate YAML start: task_id={task_id}, input={input_yaml_path}, output={output_yaml_path}, model={self.model}"
+                f"Translate YAML start: task_id={task_id}, input={input_yaml_path}, output={output_yaml_path}, engine={self.translation_engine}"
             )
             data, layouts = self._load_yaml_layouts(input_yaml_path)
             logger.info(f"Translate YAML loaded: task_id={task_id}, total_layouts={len(layouts)}")
@@ -99,11 +114,13 @@ class LayoutTranslator:
         skipped_count = 0
 
         try:
-            if self.api_key == "":
-                raise ValueError("api_key 不能为空")
+            if self.translation_engine == "llm" and self.api_key == "":
+                raise ValueError("LLM API Key 不能为空")
+            if self.translation_engine == "aliyun" and not self.aliyun_mt_client:
+                raise ValueError("Aliyun Access Key 配置缺失")
 
             logger.info(
-                f"Translate layouts start: task_id={task_id}, total={total}, model={self.model}, source={self.source_lang}, target={self.target_lang}"
+                f"Translate layouts start: task_id={task_id}, total={total}, engine={self.translation_engine}, source={self.source_lang}, target={self.target_lang}"
             )
             for idx, item in enumerate(safe_layouts):
                 layout_type = item.get("type")
@@ -162,6 +179,37 @@ class LayoutTranslator:
             return safe_layouts
 
     def _translate_text(self, text: str) -> str:
+        # Aliyun Machine Translation
+        if self.translation_engine == "aliyun":
+            if not self.aliyun_mt_client:
+                raise ValueError("Aliyun MT client not initialized")
+
+            src_map = {"Chinese": "zh", "English": "en"}
+            tgt_map = {"Chinese": "zh", "English": "en"}
+
+            # Default to auto/zh if not mapped
+            s_code = src_map.get(self.source_lang, "auto")
+            t_code = tgt_map.get(self.target_lang, "zh")
+
+            # Special case: if source is auto, Aliyun MT accepts "auto"
+
+            try:
+                # Reuse retry logic inside client or wrap here?
+                # The client implementation I wrote uses requests with timeout but no retries.
+                # I'll implement simple retry here to be robust.
+                last_err = None
+                for i in range(self.max_retries):
+                    try:
+                        return self.aliyun_mt_client.translate_general(text, s_code, t_code)
+                    except Exception as e:
+                        last_err = e
+                        logger.warning(f"Aliyun MT attempt {i+1} failed: {e}")
+                        time.sleep(self.retry_backoff_seconds * (i+1))
+                raise last_err
+            except Exception as e:
+                raise RuntimeError(f"Aliyun MT failed: {e}")
+
+        # LLM Translation
         url = f"{self.base_url}/chat/completions"
         payload = {
             "model": self.model,

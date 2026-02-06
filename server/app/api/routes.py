@@ -260,7 +260,8 @@ async def get_config(db: Session = Depends(get_db)):
         "aliyunEndpoint": config.aliyun_endpoint,
         "llmApiKey": config.llm_api_key,
         "llmModel": config.llm_model,
-        "llmEndpoint": config.llm_endpoint
+        "llmEndpoint": config.llm_endpoint,
+        "translationEngine": config.translation_engine
     }
 
 @router.post("/config", response_model=SystemConfig)
@@ -277,6 +278,7 @@ async def update_config(config_in: SystemConfig, db: Session = Depends(get_db)):
     config.llm_api_key = config_in.llmApiKey
     config.llm_model = config_in.llmModel
     config.llm_endpoint = config_in.llmEndpoint
+    config.translation_engine = config_in.translationEngine
     
     db.commit()
     db.refresh(config)
@@ -288,5 +290,6 @@ async def update_config(config_in: SystemConfig, db: Session = Depends(get_db)):
         "aliyunEndpoint": config.aliyun_endpoint,
         "llmApiKey": config.llm_api_key,
         "llmModel": config.llm_model,
-        "llmEndpoint": config.llm_endpoint
+        "llmEndpoint": config.llm_endpoint,
+        "translationEngine": config.translation_engine
     }
