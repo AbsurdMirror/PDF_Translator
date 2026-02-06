@@ -48,6 +48,15 @@
           />
         </el-form-item>
 
+        <el-divider content-position="left">翻译引擎选择</el-divider>
+
+        <el-form-item label="翻译引擎" prop="translationEngine">
+          <el-radio-group v-model="configForm.translationEngine">
+            <el-radio value="llm" label="llm">大模型翻译 (LLM)</el-radio>
+            <el-radio value="aliyun" label="aliyun">阿里云机器翻译</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
         <el-divider content-position="left">LLM配置</el-divider>
 
         <el-form-item label="API Key" prop="llmApiKey">
@@ -100,7 +109,8 @@ const configForm = reactive({
   aliyunEndpoint: 'https://docmind-api.cn-hangzhou.aliyuncs.com',
   llmApiKey: '',
   llmModel: '',
-  llmEndpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+  llmEndpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  translationEngine: 'llm'
 })
 
 const formRules: FormRules = {
@@ -136,7 +146,8 @@ const saveConfigForm = async () => {
       aliyunEndpoint: configForm.aliyunEndpoint,
       llmApiKey: configForm.llmApiKey,
       llmModel: configForm.llmModel,
-      llmEndpoint: configForm.llmEndpoint
+      llmEndpoint: configForm.llmEndpoint,
+      translationEngine: configForm.translationEngine
     }
 
     // 调用 API 保存配置
@@ -166,7 +177,8 @@ const loadCurrentConfig = async () => {
         currentConfig.aliyunEndpoint || 'https://docmind-api.cn-hangzhou.aliyuncs.com',
       llmApiKey: currentConfig.llmApiKey || '',
       llmModel: currentConfig.llmModel || '',
-      llmEndpoint: currentConfig.llmEndpoint || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+      llmEndpoint: currentConfig.llmEndpoint || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      translationEngine: currentConfig.translationEngine || 'llm'
     })
     // 同时更新 store
     translationStore.updateConfig(currentConfig)
