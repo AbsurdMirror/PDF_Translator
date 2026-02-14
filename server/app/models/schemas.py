@@ -37,6 +37,7 @@ class SystemConfig(BaseModel):
     llmApiKey: str = ""
     llmModel: str = ""
     llmEndpoint: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    translationEngine: str = "llm"
 
 class TaskResultUpdate(BaseModel):
     index: int

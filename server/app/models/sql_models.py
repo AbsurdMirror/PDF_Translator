@@ -29,4 +29,5 @@ class Config(Base):
     llm_api_key = Column(String, default="")
     llm_model = Column(String, default="")
     llm_endpoint = Column(String, default="https://dashscope.aliyuncs.com/compatible-mode/v1")
+    translation_engine = Column(String, default="llm")  # llm or aliyun
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
