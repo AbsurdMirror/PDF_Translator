@@ -33,9 +33,15 @@ class PDFParseManager:
             return
         self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="PDFParseWorker")
         self.active_tasks = {}
+        self.active_parsers = {}
         self.initialized = True
+        self.stop_requested = False
 
     def submit_task(self, task_id: str):
+        if self.stop_requested:
+            logger.warning(f"Cannot submit task {task_id}: manager is stopping")
+            return
+
         if task_id in self.active_tasks and not self.active_tasks[task_id].done():
             logger.warning(f"Task {task_id} is already running")
             return
@@ -44,7 +50,30 @@ class PDFParseManager:
         self.active_tasks[task_id] = future
         logger.info(f"Task {task_id} submitted to pool")
 
+    def stop_all(self):
+        """Stops all running PDF parse tasks."""
+        self.stop_requested = True
+        logger.info("Stopping all PDF parse tasks...")
+        for task_id, parser in list(self.active_parsers.items()):
+            try:
+                parser.stop()
+            except Exception as e:
+                logger.error(f"Error stopping parser {task_id}: {e}")
+
+        try:
+             # cancel_futures is available in Python 3.9+
+             self.executor.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+             self.executor.shutdown(wait=False)
+
+        self.active_tasks.clear()
+        self.active_parsers.clear()
+
     def _execute_task(self, task_id: str):
+        if self.stop_requested:
+            logger.info(f"Task {task_id} skipped due to shutdown")
+            return
+
         logger.info(f"Starting execution for task {task_id}")
         db = SessionLocal()
         task = None
@@ -176,8 +205,15 @@ class PDFParseManager:
                 debug=True
             )
 
+            self.active_parsers[task_id] = parser
+
             logger.info(f"Running parser for {task_id}")
-            parser.run()
+            try:
+                parser.run()
+            finally:
+                if task_id in self.active_parsers:
+                    del self.active_parsers[task_id]
+
             logger.info(
                 f"Task {task_id} parser run finished: status={parser.task_status}, total={parser.total_layout_num}, processed={parser.processed_layout_num}"
             )

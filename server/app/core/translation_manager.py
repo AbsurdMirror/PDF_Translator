@@ -31,9 +31,14 @@ class TranslationManager:
             return
         self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="TranslateWorker")
         self.active_tasks = {}
+        self.stop_event = threading.Event()
         self.initialized = True
 
     def submit_task(self, task_id: str):
+        if self.stop_event.is_set():
+            logger.warning(f"Cannot submit task {task_id}: manager is stopping")
+            return
+
         if task_id in self.active_tasks and not self.active_tasks[task_id].done():
             logger.warning(f"Task {task_id} is already running")
             return
@@ -42,7 +47,24 @@ class TranslationManager:
         self.active_tasks[task_id] = future
         logger.info(f"Task {task_id} submitted to pool")
 
+    def stop_all(self):
+        """Stops all running translation tasks."""
+        logger.info("Stopping all translation tasks...")
+        self.stop_event.set()
+        try:
+            # cancel_futures is available in Python 3.9+
+            self.executor.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            self.executor.shutdown(wait=False)
+
+        # Clear active tasks tracking
+        self.active_tasks.clear()
+
     def _execute_task(self, task_id: str):
+        if self.stop_event.is_set():
+            logger.info(f"Task {task_id} skipped due to shutdown")
+            return
+
         logger.info(f"Starting translation for task {task_id}")
         db = SessionLocal()
         task: Optional[Task] = None
@@ -147,7 +169,13 @@ class TranslationManager:
             def on_finish(cb_task_id: Optional[str], status: str, info: Dict[str, Any]):
                 nonlocal translation_ok, finish_info
                 finish_info = info or {}
-                if status != "success":
+                if status == "stopped":
+                    translation_ok = False
+                    logger.info(f"Task {task_id} translation stopped")
+                    task.status = "failed" # or specific status if supported
+                    task.message = "任务已停止"
+                    db.commit()
+                elif status != "success":
                     translation_ok = False
                     err = finish_info.get("error") or "翻译失败"
                     logger.error(f"Task {task_id} translation finished with failure: {err}")
@@ -157,7 +185,7 @@ class TranslationManager:
                 else:
                     logger.info(f"Task {task_id} translation finished successfully: {finish_info}")
 
-            translator.translate_layouts(layouts, task_id=task_id, on_item=on_item, on_finish=on_finish)
+            translator.translate_layouts(layouts, task_id=task_id, on_item=on_item, on_finish=on_finish, stop_event=self.stop_event)
             self._save_yaml_layouts(yaml_path, data, layouts)
 
             if not translation_ok:
