@@ -6,9 +6,11 @@ from pprint import pformat
 from typing import Callable, Dict, List, Optional, Tuple, Union, Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+import threading
 
 import yaml
 from .aliyun_mt_client import AliyunMTClient
+from .task_logger import log_task_network
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,7 @@ class LayoutTranslator:
         self.retry_backoff_seconds = float(retry_backoff_seconds)
         self.debug = bool(debug)
         self.debug_output_path = debug_output_path or "layout_translator_debug.log"
+        self.current_task_id = None
 
         self.aliyun_mt_client = None
         if self.translation_engine == "aliyun":
@@ -94,6 +97,7 @@ class LayoutTranslator:
             if on_finish:
                 on_finish(task_id, final_status, {**final_info, "output_path": output_yaml_path})
             logger.info(f"Translate YAML finished: task_id={task_id}, status={final_status}, info={final_info}")
+            self.current_task_id = None
             return layouts
         except Exception as e:
             logger.error(f"Translate YAML exception: task_id={task_id}, err={e}", exc_info=True)
@@ -107,7 +111,9 @@ class LayoutTranslator:
         task_id: Optional[str] = None,
         on_item: Optional[Callable[[int, str, bool], None]] = None,
         on_finish: Optional[Callable[[Optional[str], str, Dict[str, Any]], None]] = None,
+        stop_event: Optional[threading.Event] = None,
     ) -> List[Dict]:
+        self.current_task_id = task_id
         safe_layouts: List[Dict] = layouts or []
         total = len(safe_layouts)
         translated_count = 0
@@ -123,6 +129,12 @@ class LayoutTranslator:
                 f"Translate layouts start: task_id={task_id}, total={total}, engine={self.translation_engine}, source={self.source_lang}, target={self.target_lang}"
             )
             for idx, item in enumerate(safe_layouts):
+                if stop_event and stop_event.is_set():
+                    logger.info(f"Task {task_id} stopped by user/system.")
+                    if on_finish:
+                         on_finish(task_id, "stopped", {"translated": translated_count, "total": total})
+                    return safe_layouts
+
                 layout_type = item.get("type")
                 if layout_type == "figure":
                     result = item.get("markdownContent") or ""
@@ -168,8 +180,10 @@ class LayoutTranslator:
             logger.info(
                 f"Translate layouts finished: task_id={task_id}, status=success, total={total}, translated={translated_count}, skipped={skipped_count}"
             )
+            self.current_task_id = None
             return safe_layouts
         except Exception as e:
+            self.current_task_id = None
             logger.error(
                 f"Translate layouts exception: task_id={task_id}, total={total}, translated={translated_count}, skipped={skipped_count}, err={e}",
                 exc_info=True,
@@ -200,9 +214,31 @@ class LayoutTranslator:
                 last_err = None
                 for i in range(self.max_retries):
                     try:
-                        return self.aliyun_mt_client.translate_general(text, s_code, t_code)
+                        # Log request before calling
+                        log_task_network(
+                            task_id=self.current_task_id,
+                            action="aliyun_mt_translate",
+                            service="aliyun_mt",
+                            request={"text": text, "source": s_code, "target": t_code}
+                        )
+                        result = self.aliyun_mt_client.translate_general(text, s_code, t_code)
+                        # Log success
+                        log_task_network(
+                            task_id=self.current_task_id,
+                            action="aliyun_mt_translate",
+                            service="aliyun_mt",
+                            response={"translated": result}
+                        )
+                        return result
                     except Exception as e:
                         last_err = e
+                        # Log error
+                        log_task_network(
+                            task_id=self.current_task_id,
+                            action="aliyun_mt_translate",
+                            service="aliyun_mt",
+                            error=str(e)
+                        )
                         logger.warning(f"Aliyun MT attempt {i+1} failed: {e}")
                         time.sleep(self.retry_backoff_seconds * (i+1))
                 raise last_err
@@ -314,8 +350,21 @@ class LayoutTranslator:
         status: Optional[Union[int, str]] = None,
         error: Any = None,
     ) -> None:
+        # Log to task network log
+        try:
+            log_task_network(
+                task_id=self.current_task_id,
+                action=action,
+                service="llm_translation",
+                request=request,
+                response=response,
+                error=str(error) if error else None
+            )
+        except Exception as e:
+            logger.error(f"Error logging task network: {e}")
+
+        # Keep existing debug log
         debug_path = self.debug_output_path
-        logger.info(f"_log_http_debug: debug={self.debug}, debug_output_path={debug_path}")
         if not self.debug:
             return
         try:

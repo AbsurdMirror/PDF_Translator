@@ -12,6 +12,7 @@ from alibabacloud_tea_util import models as util_models
 from alibabacloud_credentials.client import Client as CredClient
 
 import logging
+from .task_logger import log_task_network
 
 logger = logging.getLogger(__name__)
 
@@ -320,8 +321,21 @@ class PDFParser:
 
     def _log_http_debug(self, action: str, req: any, resp: any = None, error: any = None):
         """记录调试日志"""
+        # Log to task network log
+        try:
+            log_task_network(
+                task_id=self.task_id,
+                action=action,
+                service="aliyun_docmind",
+                request=self._safe_serialize(req) if req else None,
+                response=self._safe_serialize(resp) if resp else None,
+                error=str(error) if error else None
+            )
+        except Exception as e:
+            logger.error(f"Error logging task network: {e}")
+
+        # Keep existing debug log logic if debug is enabled
         debug_path = self.debug_output_path
-        logger.debug(f"_log_http_debug: debug={self.debug}, debug_output_path={debug_path}")
         if not self.debug: return
         try:
             os.makedirs(os.path.dirname(debug_path) or ".", exist_ok=True)
