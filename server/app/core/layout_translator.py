@@ -6,6 +6,7 @@ from pprint import pformat
 from typing import Callable, Dict, List, Optional, Tuple, Union, Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+import threading
 
 import yaml
 from .aliyun_mt_client import AliyunMTClient
