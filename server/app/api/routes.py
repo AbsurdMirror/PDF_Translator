@@ -198,7 +198,12 @@ async def update_task_result(task_id: str, update_data: TaskResultUpdate):
         if update_data.index < 0 or update_data.index >= len(layouts):
              raise HTTPException(status_code=400, detail="Invalid index")
              
-        layouts[update_data.index]["markdownContent"] = update_data.markdownContent
+        if update_data.markdownContent is None and update_data.translatedMarkdownContent is None:
+            raise HTTPException(status_code=400, detail="更新内容不能为空")
+        if update_data.markdownContent is not None:
+            layouts[update_data.index]["markdownContent"] = update_data.markdownContent
+        if update_data.translatedMarkdownContent is not None:
+            layouts[update_data.index]["translatedMarkdownContent"] = update_data.translatedMarkdownContent
         
         with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)

@@ -72,10 +72,14 @@ export const getTaskDetail = (taskId: string) => {
 }
 
 // 更新任务解析结果
-export const updateTaskResult = (taskId: string, index: number, markdownContent: string) => {
+export const updateTaskResult = (
+  taskId: string,
+  index: number,
+  payload: { markdownContent?: string; translatedMarkdownContent?: string }
+) => {
   return api.post(`/task/${taskId}/result/update`, {
     index,
-    markdownContent
+    ...payload
   })
 }
 

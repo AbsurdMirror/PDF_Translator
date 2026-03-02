@@ -168,6 +168,65 @@
           </el-table-column>
         </el-table>
 
+        <el-table
+          v-else-if="viewMode === 'compare' && parseResults.length > 0"
+          :data="parseResults"
+          style="width: 100%"
+          border
+          stripe
+        >
+          <el-table-column prop="pageNum" label="页码" width="80" align="center" />
+          <el-table-column prop="type" label="类型" width="100" align="center" />
+          <el-table-column prop="subType" label="子类型" width="120" align="center">
+            <template #default="{ row }">
+              {{ row.subType || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="解析内容" min-width="320">
+            <template #default="{ row }">
+              <div class="markdown-preview markdown-body" v-html="renderMarkdown(row.markdownContent)"></div>
+            </template>
+          </el-table-column>
+          <el-table-column label="翻译内容" min-width="320">
+            <template #default="{ row }">
+              <div v-if="translationEditingIndex === row.index">
+                <el-input
+                  v-model="translationEditingContent"
+                  type="textarea"
+                  :autosize="{ minRows: 4, maxRows: 15 }"
+                  placeholder="请输入翻译内容"
+                />
+              </div>
+              <div v-else class="markdown-preview markdown-body" v-html="renderMarkdown(row.translatedMarkdownContent || row.markdownContent)"></div>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="150" align="center" fixed="right">
+            <template #default="{ row }">
+              <div v-if="translationEditingIndex === row.index" class="edit-actions">
+                <el-button 
+                  type="success" 
+                  size="small" 
+                  @click="saveTranslationEdit(row)" 
+                  :loading="translationSaving"
+                  :disabled="translationSaving"
+                >
+                  保存
+                </el-button>
+                <el-button 
+                  size="small" 
+                  @click="cancelTranslationEdit" 
+                  :disabled="translationSaving"
+                >
+                  取消
+                </el-button>
+              </div>
+              <div v-else class="normal-actions">
+                <el-button type="primary" size="small" @click="startTranslationEdit(row)">编辑翻译</el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+
         <el-empty
           v-else-if="viewMode === 'translation'"
           description="暂无翻译结果"
@@ -175,7 +234,7 @@
         />
 
         <el-empty
-          v-else
+          v-else-if="viewMode === 'compare'"
           description="暂无对照结果"
           class="result-empty"
         />
@@ -210,6 +269,9 @@ const task = computed(() => translationStore.tasks.find((t) => t.taskId === task
 const editingIndex = ref<number | null>(null)
 const editingContent = ref('')
 const saving = ref(false)
+const translationEditingIndex = ref<number | null>(null)
+const translationEditingContent = ref('')
+const translationSaving = ref(false)
 const viewMode = ref<'parse' | 'translation' | 'compare'>('parse')
 const translateSubmitting = ref(false)
 const pollingTimer = ref<number | null>(null)
@@ -333,7 +395,7 @@ const cancelEdit = () => {
 const saveEdit = async (row: any) => {
   saving.value = true
   try {
-    await updateTaskResult(taskId, row.index, editingContent.value)
+    await updateTaskResult(taskId, row.index, { markdownContent: editingContent.value })
     row.markdownContent = editingContent.value
     ElMessage.success('保存成功')
     editingIndex.value = null
@@ -341,6 +403,30 @@ const saveEdit = async (row: any) => {
     ElMessage.error('保存失败')
   } finally {
     saving.value = false
+  }
+}
+
+const startTranslationEdit = (row: any) => {
+  translationEditingIndex.value = row.index
+  translationEditingContent.value = row.translatedMarkdownContent || row.markdownContent
+}
+
+const cancelTranslationEdit = () => {
+  translationEditingIndex.value = null
+  translationEditingContent.value = ''
+}
+
+const saveTranslationEdit = async (row: any) => {
+  translationSaving.value = true
+  try {
+    await updateTaskResult(taskId, row.index, { translatedMarkdownContent: translationEditingContent.value })
+    row.translatedMarkdownContent = translationEditingContent.value
+    ElMessage.success('保存成功')
+    translationEditingIndex.value = null
+  } catch (e) {
+    ElMessage.error('保存失败')
+  } finally {
+    translationSaving.value = false
   }
 }
 

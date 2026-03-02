@@ -41,7 +41,8 @@ class SystemConfig(BaseModel):
 
 class TaskResultUpdate(BaseModel):
     index: int
-    markdownContent: str
+    markdownContent: Optional[str] = None
+    translatedMarkdownContent: Optional[str] = None
 
 class TranslationSubmit(BaseModel):
     taskId: str
