@@ -729,12 +729,18 @@ onUnmounted(() => {
 .markdown-preview {
   font-size: 14px;
   line-height: 1.6;
-  max-height: 300px;
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
 }
 
 .markdown-preview :deep(li) {
   display: list-item;
+}
+
+.markdown-preview :deep(img) {
+  max-width: 100%;
+  height: auto;
+  display: block;
 }
 
 .edit-actions,
