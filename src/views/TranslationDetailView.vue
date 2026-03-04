@@ -226,26 +226,36 @@
               </div>
             </div>
 
-            <!-- 右侧操作列 -->
-            <div class="block-actions-col">
-              <div
-                class="drag-handle action-btn"
-                title="拖动以重新排序"
-                @mousedown="dragIndex = row.index"
-                @mouseup="dragIndex = null"
-                @mouseleave="dragIndex = null"
-              >
-                <el-icon><Rank /></el-icon>
-              </div>
-              <div class="action-btn" title="编辑原文" v-if="viewMode === 'parse' || viewMode === 'compare'" @click="startSourceEdit(row)">
-                编辑原文
-              </div>
-              <div class="action-btn" title="编辑译文" v-if="viewMode === 'translation' || viewMode === 'compare'" @click="startTranslationEdit(row)">
-                编辑译文
-              </div>
-              <div class="action-btn" title="评论" @click="toggleComment(row)">
-                评论 ({{ (row.comments || []).length }})
-              </div>
+            <!-- 悬浮操作栏 (Floating Toolbar) -->
+            <div class="floating-toolbar">
+              <el-tooltip content="拖动以重新排序" placement="left" :show-after="500">
+                <div
+                  class="toolbar-btn drag-handle"
+                  @mousedown="dragIndex = row.index"
+                  @mouseup="dragIndex = null"
+                  @mouseleave="dragIndex = null"
+                >
+                  <el-icon><Rank /></el-icon>
+                </div>
+              </el-tooltip>
+
+              <el-tooltip content="编辑原文" placement="left" :show-after="500" v-if="viewMode === 'parse' || viewMode === 'compare'">
+                <div class="toolbar-btn" @click="startSourceEdit(row)">
+                  <el-icon><Edit /></el-icon>
+                </div>
+              </el-tooltip>
+
+              <el-tooltip content="编辑译文" placement="left" :show-after="500" v-if="viewMode === 'translation' || viewMode === 'compare'">
+                <div class="toolbar-btn" @click="startTranslationEdit(row)">
+                  <el-icon><Edit /></el-icon>
+                </div>
+              </el-tooltip>
+
+              <el-tooltip :content="`评论 (${(row.comments || []).length})`" placement="left" :show-after="500">
+                <div class="toolbar-btn" @click="toggleComment(row)">
+                  <el-icon><ChatDotSquare /></el-icon>
+                </div>
+              </el-tooltip>
             </div>
           </div>
         </div>
@@ -264,7 +274,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, Download, Check, Close, Rank } from '@element-plus/icons-vue'
+import { Document, Download, Check, Close, Rank, Edit, ChatDotSquare } from '@element-plus/icons-vue'
 import { useTranslationStore } from '@/stores/translation'
 import { getTaskDetail, downloadSourceFile, updateTaskResult, getTranslationProgress, submitTranslationTask } from '@/services/api'
 import { downloadFile } from '@/utils'
@@ -753,9 +763,11 @@ onUnmounted(() => {
   border: 1px solid #ebeef5;
   border-radius: 8px;
   padding: 16px;
+  padding-right: 48px;
   transition: box-shadow 0.3s;
   display: flex;
-  gap: 16px;
+  flex-direction: column;
+  position: relative;
 }
 
 .document-block:hover {
@@ -763,38 +775,54 @@ onUnmounted(() => {
 }
 
 .block-main {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
 }
 
-.block-actions-col {
-  flex: 0 0 100px;
+.floating-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s;
+  background-color: #fff;
+  padding: 4px;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid #ebeef5;
+  z-index: 10;
+}
+
+.document-block:hover .floating-toolbar {
+  opacity: 1;
+  visibility: visible;
+}
+
+.toolbar-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
   align-items: center;
-  gap: 12px;
-  padding-left: 16px;
-  border-left: 1px dashed #e4e7ed;
-}
-
-.action-btn {
-  font-size: 13px;
-  color: #409eff;
+  justify-content: center;
+  border-radius: 4px;
   cursor: pointer;
-  user-select: none;
+  color: #606266;
+  transition: background-color 0.2s, color 0.2s;
+  font-size: 16px;
 }
 
-.action-btn:hover {
-  color: #66b1ff;
-  text-decoration: underline;
+.toolbar-btn:hover {
+  background-color: #ecf5ff;
+  color: #409eff;
 }
 
 .drag-handle {
   cursor: grab;
-  font-size: 18px;
-  color: #909399;
   text-decoration: none !important;
 }
 
