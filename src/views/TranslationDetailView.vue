@@ -48,6 +48,7 @@
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
+            <el-checkbox v-model="showMetaInfo" label="显示段落信息" style="margin-left: 12px; margin-right: 8px;" />
           </div>
         </div>
       </template>
@@ -120,89 +121,132 @@
             class="document-block"
             v-for="(row, i) in parseResults"
             :key="row.index"
-            draggable="true"
+            :draggable="dragIndex === row.index"
             @dragstart="onDragStart($event, i)"
             @dragover.prevent
             @dragenter.prevent
             @drop="onDrop($event, i)"
+            @dragend="onDragEnd"
           >
-            <div class="block-meta">
-              <div class="drag-handle" title="拖动以重新排序">
-                <el-icon><Rank /></el-icon>
+            <div class="block-main">
+              <div class="block-meta" v-if="showMetaInfo">
+                <span>第 {{ row.pageNum }} 页</span>
+                <el-tag size="small" type="info">{{ row.type }}</el-tag>
+                <el-tag size="small" v-if="row.subType" type="info" effect="plain">{{ row.subType }}</el-tag>
               </div>
-              <span>第 {{ row.pageNum }} 页</span>
-              <el-tag size="small" type="info">{{ row.type }}</el-tag>
-              <el-tag size="small" v-if="row.subType" type="info" effect="plain">{{ row.subType }}</el-tag>
-              <div style="flex: 1"></div>
-              <el-button size="small" text @click="toggleEdit(row)">
-                编辑
-              </el-button>
-              <el-button size="small" text @click="toggleComment(row)">
-                评论 ({{ (row.comments || []).length }})
-              </el-button>
-            </div>
 
-            <div class="block-content" v-if="editingIndex !== row.index && translationEditingIndex !== row.index">
-              <!-- 解析结果模式 -->
-              <template v-if="viewMode === 'parse'">
-                <div class="markdown-preview markdown-body" v-html="renderMarkdown(row.markdownContent)"></div>
-              </template>
-
-              <!-- 翻译结果模式 -->
-              <template v-if="viewMode === 'translation'">
-                <div class="markdown-preview markdown-body" v-html="renderMarkdown(row.translatedMarkdownContent || row.markdownContent)"></div>
-              </template>
-
-              <!-- 双语对照模式 -->
-              <template v-if="viewMode === 'compare'">
-                <template v-if="compareLayout === 'sourceFirst'">
-                  <div class="compare-item source-item">
-                    <div class="markdown-preview markdown-body" v-html="renderMarkdown(row.markdownContent)"></div>
+              <div class="block-content">
+                <!-- 解析结果模式 -->
+                <template v-if="viewMode === 'parse'">
+                  <div class="edit-area" v-if="row.editingSource">
+                    <el-input v-model="row.sourceBuffer" type="textarea" :autosize="{ minRows: 4, maxRows: 15 }" placeholder="请输入原文" />
+                    <div class="edit-actions-row">
+                      <el-button type="success" size="small" @click="saveSourceEdit(row)" :loading="saving" :disabled="saving">保存原文</el-button>
+                      <el-button size="small" @click="cancelSourceEdit(row)" :disabled="saving">取消</el-button>
+                    </div>
                   </div>
-                  <div class="compare-item translation-item">
-                    <div class="markdown-preview markdown-body" v-html="renderMarkdown(row.translatedMarkdownContent || row.markdownContent)"></div>
-                  </div>
+                  <div v-else class="markdown-preview markdown-body" v-html="renderMarkdown(row.markdownContent)"></div>
                 </template>
-                <template v-else>
-                  <div class="compare-item translation-item">
-                    <div class="markdown-preview markdown-body" v-html="renderMarkdown(row.translatedMarkdownContent || row.markdownContent)"></div>
-                  </div>
-                  <div class="compare-item source-item">
-                    <div class="markdown-preview markdown-body" v-html="renderMarkdown(row.markdownContent)"></div>
-                  </div>
-                </template>
-              </template>
-            </div>
 
-            <div class="edit-area" v-if="editingIndex === row.index || translationEditingIndex === row.index">
-              <el-input
-                v-model="row.editBuffer"
-                type="textarea"
-                :autosize="{ minRows: 4, maxRows: 15 }"
-                placeholder="请输入内容"
-              />
-              <div class="edit-actions-row">
-                <el-button type="success" size="small" @click="saveBlockEdit(row)" :loading="saving" :disabled="saving">保存</el-button>
-                <el-button size="small" @click="cancelBlockEdit(row)" :disabled="saving">取消</el-button>
+                <!-- 翻译结果模式 -->
+                <template v-if="viewMode === 'translation'">
+                  <div class="edit-area" v-if="row.editingTranslation">
+                    <el-input v-model="row.translationBuffer" type="textarea" :autosize="{ minRows: 4, maxRows: 15 }" placeholder="请输入译文" />
+                    <div class="edit-actions-row">
+                      <el-button type="success" size="small" @click="saveTranslationEdit(row)" :loading="translationSaving" :disabled="translationSaving">保存译文</el-button>
+                      <el-button size="small" @click="cancelTranslationEdit(row)" :disabled="translationSaving">取消</el-button>
+                    </div>
+                  </div>
+                  <div v-else class="markdown-preview markdown-body" v-html="renderMarkdown(row.translatedMarkdownContent || row.markdownContent)"></div>
+                </template>
+
+                <!-- 双语对照模式 -->
+                <template v-if="viewMode === 'compare'">
+                  <template v-if="compareLayout === 'sourceFirst'">
+                    <div class="compare-item source-item">
+                      <div class="edit-area" v-if="row.editingSource">
+                        <el-input v-model="row.sourceBuffer" type="textarea" :autosize="{ minRows: 4, maxRows: 15 }" placeholder="请输入原文" />
+                        <div class="edit-actions-row">
+                          <el-button type="success" size="small" @click="saveSourceEdit(row)" :loading="saving" :disabled="saving">保存原文</el-button>
+                          <el-button size="small" @click="cancelSourceEdit(row)" :disabled="saving">取消</el-button>
+                        </div>
+                      </div>
+                      <div v-else class="markdown-preview markdown-body" v-html="renderMarkdown(row.markdownContent)"></div>
+                    </div>
+                    <div class="compare-item translation-item">
+                      <div class="edit-area" v-if="row.editingTranslation">
+                        <el-input v-model="row.translationBuffer" type="textarea" :autosize="{ minRows: 4, maxRows: 15 }" placeholder="请输入译文" />
+                        <div class="edit-actions-row">
+                          <el-button type="success" size="small" @click="saveTranslationEdit(row)" :loading="translationSaving" :disabled="translationSaving">保存译文</el-button>
+                          <el-button size="small" @click="cancelTranslationEdit(row)" :disabled="translationSaving">取消</el-button>
+                        </div>
+                      </div>
+                      <div v-else class="markdown-preview markdown-body" v-html="renderMarkdown(row.translatedMarkdownContent || row.markdownContent)"></div>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div class="compare-item translation-item">
+                      <div class="edit-area" v-if="row.editingTranslation">
+                        <el-input v-model="row.translationBuffer" type="textarea" :autosize="{ minRows: 4, maxRows: 15 }" placeholder="请输入译文" />
+                        <div class="edit-actions-row">
+                          <el-button type="success" size="small" @click="saveTranslationEdit(row)" :loading="translationSaving" :disabled="translationSaving">保存译文</el-button>
+                          <el-button size="small" @click="cancelTranslationEdit(row)" :disabled="translationSaving">取消</el-button>
+                        </div>
+                      </div>
+                      <div v-else class="markdown-preview markdown-body" v-html="renderMarkdown(row.translatedMarkdownContent || row.markdownContent)"></div>
+                    </div>
+                    <div class="compare-item source-item">
+                      <div class="edit-area" v-if="row.editingSource">
+                        <el-input v-model="row.sourceBuffer" type="textarea" :autosize="{ minRows: 4, maxRows: 15 }" placeholder="请输入原文" />
+                        <div class="edit-actions-row">
+                          <el-button type="success" size="small" @click="saveSourceEdit(row)" :loading="saving" :disabled="saving">保存原文</el-button>
+                          <el-button size="small" @click="cancelSourceEdit(row)" :disabled="saving">取消</el-button>
+                        </div>
+                      </div>
+                      <div v-else class="markdown-preview markdown-body" v-html="renderMarkdown(row.markdownContent)"></div>
+                    </div>
+                  </template>
+                </template>
               </div>
-            </div>
 
-            <!-- 评论区 -->
-            <div class="comments-section" v-if="row.showComments">
-              <el-divider>评论</el-divider>
-              <div class="comment-list" v-if="row.comments && row.comments.length > 0">
-                <div class="comment-item" v-for="c in row.comments" :key="c.id">
-                  <div class="comment-time">{{ c.time }}</div>
-                  <div class="comment-text">{{ c.text }}</div>
+              <!-- 评论区 -->
+              <div class="comments-section" v-if="row.showComments">
+                <el-divider>评论</el-divider>
+                <div class="comment-list" v-if="row.comments && row.comments.length > 0">
+                  <div class="comment-item" v-for="c in row.comments" :key="c.id">
+                    <div class="comment-time">{{ c.time }}</div>
+                    <div class="comment-text">{{ c.text }}</div>
+                  </div>
+                </div>
+                <el-empty v-else description="暂无评论" :image-size="40" />
+                <div class="add-comment">
+                  <el-input v-model="row.newComment" placeholder="添加新评论..." size="small" @keyup.enter="submitComment(row)" />
+                  <el-button type="primary" size="small" @click="submitComment(row)">提交</el-button>
                 </div>
               </div>
-              <el-empty v-else description="暂无评论" :image-size="40" />
-              <div class="add-comment">
-                <el-input v-model="row.newComment" placeholder="添加新评论..." size="small" @keyup.enter="submitComment(row)" />
-                <el-button type="primary" size="small" @click="submitComment(row)">提交</el-button>
-              </div>
             </div>
 
+            <!-- 右侧操作列 -->
+            <div class="block-actions-col">
+              <div
+                class="drag-handle action-btn"
+                title="拖动以重新排序"
+                @mousedown="dragIndex = row.index"
+                @mouseup="dragIndex = null"
+                @mouseleave="dragIndex = null"
+              >
+                <el-icon><Rank /></el-icon>
+              </div>
+              <div class="action-btn" title="编辑原文" v-if="viewMode === 'parse' || viewMode === 'compare'" @click="startSourceEdit(row)">
+                编辑原文
+              </div>
+              <div class="action-btn" title="编辑译文" v-if="viewMode === 'translation' || viewMode === 'compare'" @click="startTranslationEdit(row)">
+                编辑译文
+              </div>
+              <div class="action-btn" title="评论" @click="toggleComment(row)">
+                评论 ({{ (row.comments || []).length }})
+              </div>
+            </div>
           </div>
         </div>
 
@@ -242,14 +286,14 @@ const task = computed(() => translationStore.tasks.find((t) => t.taskId === task
 const editingIndex = ref<number | null>(null)
 const editingContent = ref('')
 const saving = ref(false)
-const translationEditingIndex = ref<number | null>(null)
-const translationEditingContent = ref('')
 const translationSaving = ref(false)
 const viewMode = ref<'parse' | 'translation' | 'compare'>('parse')
 const compareLayout = ref<'sourceFirst' | 'translationFirst'>('sourceFirst')
 const translateSubmitting = ref(false)
 const pollingTimer = ref<number | null>(null)
 const isReordered = ref(false)
+const showMetaInfo = ref(true)
+const dragIndex = ref<number | null>(null)
 
 const parseProgress = computed(() => {
   return Math.max(0, Math.min(100, task.value?.parseProgress ?? 0))
@@ -362,43 +406,49 @@ const startEdit = (row: any) => {
   editingContent.value = row.markdownContent
 }
 
-const cancelEdit = () => {
-  editingIndex.value = null
-  editingContent.value = ''
+const startSourceEdit = (row: any) => {
+  row.editingSource = true
+  row.sourceBuffer = row.markdownContent
 }
 
-const toggleEdit = (row: any) => {
-  if (viewMode.value === 'translation') {
-    translationEditingIndex.value = row.index
-    row.editBuffer = row.translatedMarkdownContent || row.markdownContent
-  } else {
-    editingIndex.value = row.index
-    row.editBuffer = row.markdownContent
-  }
+const cancelSourceEdit = (row: any) => {
+  row.editingSource = false
 }
 
-const cancelBlockEdit = (row: any) => {
-  editingIndex.value = null
-  translationEditingIndex.value = null
-}
-
-const saveBlockEdit = async (row: any) => {
+const saveSourceEdit = async (row: any) => {
   saving.value = true
   try {
-    if (editingIndex.value === row.index) {
-      await updateTaskResult(taskId, row.index, { markdownContent: row.editBuffer })
-      row.markdownContent = row.editBuffer
-    } else {
-      await updateTaskResult(taskId, row.index, { translatedMarkdownContent: row.editBuffer })
-      row.translatedMarkdownContent = row.editBuffer
-    }
-    ElMessage.success('保存成功')
-    editingIndex.value = null
-    translationEditingIndex.value = null
+    await updateTaskResult(taskId, row.index, { markdownContent: row.sourceBuffer })
+    row.markdownContent = row.sourceBuffer
+    row.editingSource = false
+    ElMessage.success('原文保存成功')
   } catch (e) {
     ElMessage.error('保存失败')
   } finally {
     saving.value = false
+  }
+}
+
+const startTranslationEdit = (row: any) => {
+  row.editingTranslation = true
+  row.translationBuffer = row.translatedMarkdownContent || row.markdownContent
+}
+
+const cancelTranslationEdit = (row: any) => {
+  row.editingTranslation = false
+}
+
+const saveTranslationEdit = async (row: any) => {
+  translationSaving.value = true
+  try {
+    await updateTaskResult(taskId, row.index, { translatedMarkdownContent: row.translationBuffer })
+    row.translatedMarkdownContent = row.translationBuffer
+    row.editingTranslation = false
+    ElMessage.success('译文保存成功')
+  } catch (e) {
+    ElMessage.error('保存失败')
+  } finally {
+    translationSaving.value = false
   }
 }
 
@@ -436,7 +486,12 @@ const onDrop = (e: DragEvent, dropIndex: number) => {
   parseResults.value.splice(dropIndex, 0, item)
   draggedIndex = -1
   isReordered.value = true
+  dragIndex.value = null
   ElMessage.success('排序已保存 (前端模拟)')
+}
+
+const onDragEnd = () => {
+  dragIndex.value = null
 }
 
 const restoreOrder = () => {
@@ -455,7 +510,10 @@ const fetchDetail = async () => {
       comments: [],
       showComments: false,
       newComment: '',
-      editBuffer: ''
+      editingSource: false,
+      editingTranslation: false,
+      sourceBuffer: '',
+      translationBuffer: ''
     }))
   } catch (e) {
     ElMessage.error('获取详情失败')
@@ -696,10 +754,52 @@ onUnmounted(() => {
   border-radius: 8px;
   padding: 16px;
   transition: box-shadow 0.3s;
+  display: flex;
+  gap: 16px;
 }
 
 .document-block:hover {
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+}
+
+.block-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.block-actions-col {
+  flex: 0 0 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding-left: 16px;
+  border-left: 1px dashed #e4e7ed;
+}
+
+.action-btn {
+  font-size: 13px;
+  color: #409eff;
+  cursor: pointer;
+  user-select: none;
+}
+
+.action-btn:hover {
+  color: #66b1ff;
+  text-decoration: underline;
+}
+
+.drag-handle {
+  cursor: grab;
+  font-size: 18px;
+  color: #909399;
+  text-decoration: none !important;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
 }
 
 .block-meta {
@@ -709,17 +809,6 @@ onUnmounted(() => {
   margin-bottom: 12px;
   font-size: 12px;
   color: #909399;
-}
-
-.drag-handle {
-  cursor: grab;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-}
-
-.drag-handle:active {
-  cursor: grabbing;
 }
 
 .edit-actions-row {
