@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import time
 from pprint import pformat
 from typing import Callable, Dict, List, Optional, Tuple, Union, Any
@@ -13,6 +14,12 @@ from .aliyun_mt_client import AliyunMTClient
 from .task_logger import log_task_network
 
 logger = logging.getLogger(__name__)
+IMAGE_MARKDOWN_PATTERN = re.compile(r"!\[[^\]]*?\]\([^\)]*?\)")
+IMAGE_HTML_PATTERN = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
+FORMULA_BLOCK_PATTERN = re.compile(
+    r"\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\begin\{(?:equation|align|aligned|eqnarray|math)\}[\s\S]*?\\end\{(?:equation|align|aligned|eqnarray|math)\}",
+    re.IGNORECASE,
+)
 
 
 class LayoutTranslator:
@@ -135,21 +142,14 @@ class LayoutTranslator:
                          on_finish(task_id, "stopped", {"translated": translated_count, "total": total})
                     return safe_layouts
 
-                layout_type = item.get("type")
-                if layout_type == "figure":
-                    result = item.get("markdownContent") or ""
+                if self._should_skip_layout(item):
+                    content = item.get("markdownContent") or ""
                     skipped_count += 1
                     if on_item:
-                        on_item(idx, result, True)
+                        on_item(idx, content, True)
                     continue
 
                 content = item.get("markdownContent") or ""
-                if content == "":
-                    skipped_count += 1
-                    if on_item:
-                        on_item(idx, "", True)
-                    continue
-
                 try:
                     translated = self._translate_text(content)
                 except Exception as e:
@@ -191,6 +191,28 @@ class LayoutTranslator:
             if on_finish:
                 on_finish(task_id, "fail", {"error": str(e), "total": total, "translated": translated_count})
             return safe_layouts
+
+    def _should_skip_layout(self, item: Dict) -> bool:
+        layout_type = (item.get("type") or "").strip().lower()
+        if layout_type in {"figure", "formula", "equation", "math", "latex"}:
+            return True
+        content = (item.get("markdownContent") or "").strip()
+        if content == "":
+            return True
+        if self._is_image_only(content):
+            return True
+        if self._is_formula_only(content):
+            return True
+        return False
+
+    def _is_image_only(self, content: str) -> bool:
+        stripped = IMAGE_MARKDOWN_PATTERN.sub("", content)
+        stripped = IMAGE_HTML_PATTERN.sub("", stripped)
+        return stripped.strip() == ""
+
+    def _is_formula_only(self, content: str) -> bool:
+        stripped = FORMULA_BLOCK_PATTERN.sub("", content)
+        return stripped.strip() == ""
 
     def _translate_text(self, text: str) -> str:
         # Aliyun Machine Translation
